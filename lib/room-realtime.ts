@@ -10,6 +10,7 @@ export type RoomMode = "watch" | "order";
 
 export type QueueItem = {
   id: string;
+  videoId: string;
   title: string;
   channel: string;
   duration: string;
@@ -23,7 +24,7 @@ export type RoomEvent =
   | { kind: "video:set"; videoId: string }
   | { kind: "player"; action: "play" | "pause" | "seek"; seconds?: number }
   | { kind: "state:request" }
-  | { kind: "state:sync"; queue: QueueItem[]; mode: RoomMode; isPlaying: boolean };
+  | { kind: "state:sync"; queue: QueueItem[]; mode: RoomMode; isPlaying: boolean; activeVideoId: string | null };
 
 export type RealtimeStatus = "disabled" | "connecting" | "connected" | "error" | "room-not-found";
 export type RoomMember = { id: string; name: string; isHost: boolean };
@@ -32,11 +33,12 @@ type Options = {
   enabled: boolean;
   roomCode: string;
   requestedHost: boolean;
+  listenerName: string;
   onEvent: (event: RoomEvent) => void;
   supabase: SupabaseBrowserConfig;
 };
 
-export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent, supabase: config }: Options) {
+export function useRoomRealtime({ enabled, roomCode, requestedHost, listenerName, onEvent, supabase: config }: Options) {
   const [status, setStatus] = useState<RealtimeStatus>(isSupabaseConfigured(config) ? "connecting" : "disabled");
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [resolvedIsHost, setResolvedIsHost] = useState(false);
@@ -128,7 +130,7 @@ export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent, sup
         .on("presence", { event: "sync" }, syncMembers)
         .subscribe(async (channelStatus) => {
           if (channelStatus === "SUBSCRIBED") {
-            await channel.track({ name: `Listener ${session.user.id.slice(0, 4)}`, isHost: actualIsHost });
+            await channel.track({ name: listenerName.trim() || `Listener ${session.user.id.slice(0, 4)}`, isHost: actualIsHost });
             if (!cancelled) setStatus("connected");
             if (!actualIsHost) {
               await channel.send({ type: "broadcast", event: "room-event", payload: { kind: "state:request" } });
@@ -146,7 +148,7 @@ export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent, sup
       channelRef.current = null;
       if (activeChannel) void supabase.removeChannel(activeChannel);
     };
-  }, [config, enabled, requestedHost, roomCode]);
+  }, [config, enabled, listenerName, requestedHost, roomCode]);
 
   const realtimeConfigured = isSupabaseConfigured(config);
   const isHost = realtimeConfigured ? resolvedIsHost : requestedHost;
