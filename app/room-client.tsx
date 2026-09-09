@@ -61,6 +61,7 @@ export default function RoomClient({
   const [showNameEditor, setShowNameEditor] = useState(false);
   const [listenerName, setListenerName] = useState("");
   const [nameDraft, setNameDraft] = useState("");
+  const [appOrigin, setAppOrigin] = useState("https://sidewave.app");
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [notice, setNotice] = useState("");
@@ -89,6 +90,8 @@ export default function RoomClient({
     if (event.kind === "order:video") {
       if (isHostRef.current) {
         setQueue((current) => current.some((item) => item.id === event.item.id) ? current : [...current, event.item]);
+        setActiveVideoId(event.item.videoId);
+        setIsPlaying(true);
         broadcastRef.current({ kind: "queue:add", item: event.item });
       }
       return;
@@ -138,6 +141,11 @@ export default function RoomClient({
   }, []);
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => setAppOrigin(window.location.origin), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  useEffect(() => {
     broadcastRef.current = broadcast;
   }, [broadcast]);
 
@@ -146,9 +154,8 @@ export default function RoomClient({
   }, [isHost]);
 
   const inviteUrl = useMemo(() => {
-    if (typeof window === "undefined") return `sidewave.app/?room=${roomCode}`;
-    return `${window.location.origin}/?room=${roomCode}${mode === "order" ? "&mode=order" : ""}`;
-  }, [mode, roomCode]);
+    return `${appOrigin}/?room=${roomCode}${mode === "order" ? "&mode=order" : ""}`;
+  }, [appOrigin, mode, roomCode]);
 
   useEffect(() => {
     const handleFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
@@ -191,14 +198,14 @@ export default function RoomClient({
       setNotice("Order sent to the host.");
     } else {
       setQueue((current) => [...current, item]);
-      const shouldStart = !activeVideoId;
+      const shouldStart = mode === "order" ? true : !activeVideoId;
       if (shouldStart) {
         setActiveVideoId(id);
         setIsPlaying(true);
       }
       if (realtimeConfigured) {
         broadcast({ kind: "queue:add", item });
-        if (shouldStart) {
+        if (shouldStart && mode !== "order") {
           broadcast({ kind: "video:set", videoId: id });
           broadcast({ kind: "player", action: "play" });
         }
@@ -298,7 +305,7 @@ export default function RoomClient({
           <div className="mode-switch" role="tablist" aria-label="Room mode"><button className={mode === "watch" ? "active" : ""} onClick={() => changeMode("watch")} role="tab" aria-selected={mode === "watch"}><MonitorUp size={18} /><span>Watch together</span><small>Everyone stays in sync</small></button><button className={mode === "order" ? "active" : ""} onClick={() => changeMode("order")} role="tab" aria-selected={mode === "order"}><Send size={18} /><span>Order to host</span><small>Requests go to the host</small></button></div>
           {mode !== "order" && videoForm}{mode !== "order" && notice && <p className="room-notice">{notice}</p>}
         </section>
-        <aside className="side-panel"><div className="side-heading"><div><p className="eyebrow">UP NEXT</p><h2>The wave queue</h2></div><span>{queue.length}</span></div><div className="queue-list">{queue.length ? queue.map((item, index) => <button key={item.id} className="queue-item" onClick={() => { setActiveVideoId(item.videoId); setIsPlaying(true); controlPlayer("play"); if (realtimeConfigured) { broadcast({ kind: "video:set", videoId: item.videoId }); broadcast({ kind: "player", action: "play" }); } }}><span className="queue-number">{String(index + 1).padStart(2, "0")}</span><Image src={item.thumb} alt="" width={43} height={31} unoptimized /><span className="queue-copy"><strong>{item.title}</strong><small>{item.channel}</small></span><small className="duration">{item.duration}</small></button>) : <p className="empty-queue">No orders yet. Scan the QR or paste a YouTube link.</p>}</div><div className="people"><div className="side-heading"><div><p className="eyebrow">IN THIS ROOM</p><h2>{members.length || 1} listener{(members.length || 1) === 1 ? "" : "s"}</h2></div><button className="add-person" onClick={() => setShowInvite(true)} aria-label="Invite friend"><Plus size={18} /></button></div><div className="people-list">{members.length ? members.map((member) => <div key={member.id}><span className="avatar avatar-you">{member.name.slice(-1)}</span><span>{member.name}{member.isHost && <small> (Host)</small>}</span>{member.isHost ? <Crown size={15} /> : <span className="presence" />}</div>) : <div><span className="avatar avatar-you">Y</span><span>{listenerName || "You"} <small>({status === "disabled" ? "Demo" : "Joining"})</small></span><span className="presence" /></div>}</div><button className="rename-listener" onClick={() => { setNameDraft(listenerName); setShowNameEditor(true); }}>Change your name</button></div></aside>
+        <aside className="side-panel"><div className="side-heading"><div><p className="eyebrow">UP NEXT</p><h2>The wave queue</h2></div><span>{queue.length}</span></div><div className="queue-list">{queue.length ? queue.map((item, index) => <button key={item.id} className="queue-item" onClick={() => { setActiveVideoId(item.videoId); setIsPlaying(true); controlPlayer("play"); if (realtimeConfigured && mode !== "order") { broadcast({ kind: "video:set", videoId: item.videoId }); broadcast({ kind: "player", action: "play" }); } }}><span className="queue-number">{String(index + 1).padStart(2, "0")}</span><Image src={item.thumb} alt="" width={43} height={31} unoptimized /><span className="queue-copy"><strong>{item.title}</strong><small>{item.channel}</small></span><small className="duration">{item.duration}</small></button>) : <p className="empty-queue">No orders yet. Scan the QR or paste a YouTube link.</p>}</div><div className="people"><div className="side-heading"><div><p className="eyebrow">IN THIS ROOM</p><h2>{members.length || 1} listener{(members.length || 1) === 1 ? "" : "s"}</h2></div><button className="add-person" onClick={() => setShowInvite(true)} aria-label="Invite friend"><Plus size={18} /></button></div><div className="people-list">{members.length ? members.map((member) => <div key={member.id}><span className="avatar avatar-you">{member.name.slice(-1)}</span><span>{member.name}{member.isHost && <small> (Host)</small>}</span>{member.isHost ? <Crown size={15} /> : <span className="presence" />}</div>) : <div><span className="avatar avatar-you">Y</span><span>{listenerName || "You"} <small>({status === "disabled" ? "Demo" : "Joining"})</small></span><span className="presence" /></div>}</div><button className="rename-listener" onClick={() => { setNameDraft(listenerName); setShowNameEditor(true); }}>Change your name</button></div></aside>
         {mode === "order" && <section className="order-input-panel">{!isHost && <p className="guest-order-intro">Send a YouTube link to the host.</p>}{videoForm}{notice && <p className="room-notice">{notice}</p>}</section>}
         {mode === "order" && <aside className="order-qr-card"><p className="eyebrow"><Users size={14} /> SCAN TO ORDER</p><h2>Let guests pick</h2><p>Keep this QR on your shared screen. Guests scan it, then send a YouTube order from their phone.</p><div className="order-qr"><QRCodeSVG value={inviteUrl} size={100} bgColor="#eef0ff" fgColor="#11142d" level="M" includeMargin /></div><div className="order-link"><span>{inviteUrl}</span><button onClick={copyInvite} aria-label="Copy room link">{copied ? <Check size={16} /> : <Copy size={16} />}</button></div></aside>}
       </div>
