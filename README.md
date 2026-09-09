@@ -12,7 +12,7 @@ Private YouTube rooms with synchronized playback commands, a shared queue, host-
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 5. Redeploy. Do not use a Supabase `service_role` or secret key in Vercel browser variables.
 
-The application works visually without these values, but realtime rooms remain disabled until Supabase is configured.
+If you use the Vercel Supabase Integration, its existing `SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are supported automatically. The application works visually without either configuration, but realtime rooms remain disabled.
 
 ## Local development
 

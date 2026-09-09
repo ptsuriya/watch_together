@@ -41,9 +41,13 @@ function makeQueueItem(id: string): QueueItem {
 export default function RoomClient({
   sharedRoom,
   requestedHost: initialRequestedHost = false,
+  supabaseUrl,
+  supabaseKey,
 }: {
   sharedRoom?: string;
   requestedHost?: boolean;
+  supabaseUrl?: string;
+  supabaseKey?: string;
 }) {
   const [screen, setScreen] = useState<"home" | "room">(sharedRoom ? "room" : "home");
   const [roomCode, setRoomCode] = useState(sharedRoom?.toUpperCase() ?? "WAVE-8K4N");
@@ -61,6 +65,10 @@ export default function RoomClient({
   const playerRef = useRef<HTMLIFrameElement>(null);
   const broadcastRef = useRef<(event: RoomEvent) => void>(() => undefined);
   const isHostRef = useRef(false);
+  const supabaseConfig = useMemo(
+    () => ({ url: supabaseUrl, key: supabaseKey }),
+    [supabaseKey, supabaseUrl],
+  );
 
   const controlPlayer = useCallback((action: "play" | "pause" | "seek", seconds?: number) => {
     const command = action === "play" ? "playVideo" : action === "pause" ? "pauseVideo" : "seekTo";
@@ -108,6 +116,7 @@ export default function RoomClient({
     roomCode,
     requestedHost,
     onEvent: handleRoomEvent,
+    supabase: supabaseConfig,
   });
 
   useEffect(() => {

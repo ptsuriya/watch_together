@@ -2,7 +2,9 @@
 
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getSupabaseBrowserClient, isSupabaseConfigured } from "./supabase";
+import {
+  getSupabaseBrowserClient, isSupabaseConfigured, type SupabaseBrowserConfig,
+} from "./supabase";
 
 export type RoomMode = "watch" | "order";
 
@@ -30,12 +32,13 @@ type Options = {
   roomCode: string;
   requestedHost: boolean;
   onEvent: (event: RoomEvent) => void;
+  supabase: SupabaseBrowserConfig;
 };
 
-export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent }: Options) {
-  const [status, setStatus] = useState<RealtimeStatus>(isSupabaseConfigured() ? "connecting" : "disabled");
+export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent, supabase: config }: Options) {
+  const [status, setStatus] = useState<RealtimeStatus>(isSupabaseConfigured(config) ? "connecting" : "disabled");
   const [members, setMembers] = useState<RoomMember[]>([]);
-  const [isHost, setIsHost] = useState(() => !isSupabaseConfigured() && requestedHost);
+  const [isHost, setIsHost] = useState(() => !isSupabaseConfigured(config) && requestedHost);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const onEventRef = useRef(onEvent);
 
@@ -50,7 +53,7 @@ export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent }: O
   useEffect(() => {
     if (!enabled) return;
 
-    const client = getSupabaseBrowserClient();
+    const client = getSupabaseBrowserClient(config);
     if (!client) {
       return;
     }
@@ -142,7 +145,7 @@ export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent }: O
       channelRef.current = null;
       if (activeChannel) void supabase.removeChannel(activeChannel);
     };
-  }, [enabled, requestedHost, roomCode]);
+  }, [config, enabled, requestedHost, roomCode]);
 
-  return { status, members, isHost, broadcast, realtimeConfigured: isSupabaseConfigured() };
+  return { status, members, isHost, broadcast, realtimeConfigured: isSupabaseConfigured(config) };
 }
