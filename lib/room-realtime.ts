@@ -20,6 +20,7 @@ export type RoomEvent =
   | { kind: "queue:add"; item: QueueItem }
   | { kind: "order:video"; item: QueueItem }
   | { kind: "mode:set"; mode: RoomMode }
+  | { kind: "video:set"; videoId: string }
   | { kind: "player"; action: "play" | "pause" | "seek"; seconds?: number }
   | { kind: "state:request" }
   | { kind: "state:sync"; queue: QueueItem[]; mode: RoomMode; isPlaying: boolean };
@@ -38,7 +39,7 @@ type Options = {
 export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent, supabase: config }: Options) {
   const [status, setStatus] = useState<RealtimeStatus>(isSupabaseConfigured(config) ? "connecting" : "disabled");
   const [members, setMembers] = useState<RoomMember[]>([]);
-  const [isHost, setIsHost] = useState(() => !isSupabaseConfigured(config) && requestedHost);
+  const [resolvedIsHost, setResolvedIsHost] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const onEventRef = useRef(onEvent);
 
@@ -96,7 +97,7 @@ export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent, sup
       }
 
       const actualIsHost = room.host_id === session.user.id;
-      if (!cancelled) setIsHost(actualIsHost);
+      if (!cancelled) setResolvedIsHost(actualIsHost);
 
       const { error: membershipError } = await supabase
         .from("room_members")
@@ -147,5 +148,7 @@ export function useRoomRealtime({ enabled, roomCode, requestedHost, onEvent, sup
     };
   }, [config, enabled, requestedHost, roomCode]);
 
-  return { status, members, isHost, broadcast, realtimeConfigured: isSupabaseConfigured(config) };
+  const realtimeConfigured = isSupabaseConfigured(config);
+  const isHost = realtimeConfigured ? resolvedIsHost : requestedHost;
+  return { status, members, isHost, broadcast, realtimeConfigured };
 }

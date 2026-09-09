@@ -53,9 +53,12 @@ export default function RoomClient({
   const [roomCode, setRoomCode] = useState(sharedRoom?.toUpperCase() ?? "WAVE-8K4N");
   const [requestedHost, setRequestedHost] = useState(initialRequestedHost);
   const [joinCode, setJoinCode] = useState("");
+  const [selectedMode, setSelectedMode] = useState<RoomMode | null>(null);
   const [mode, setMode] = useState<RoomMode>("watch");
   const [queue, setQueue] = useState(starterQueue);
   const [videoUrl, setVideoUrl] = useState("");
+  const [launchUrl, setLaunchUrl] = useState("");
+  const [activeVideoId, setActiveVideoId] = useState("M7lc1UVf-VE");
   const [isPlaying, setIsPlaying] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -92,6 +95,10 @@ export default function RoomClient({
     }
     if (event.kind === "mode:set") {
       setMode(event.mode);
+      return;
+    }
+    if (event.kind === "video:set") {
+      setActiveVideoId(event.videoId);
       return;
     }
     if (event.kind === "player") {
@@ -139,10 +146,13 @@ export default function RoomClient({
   }, []);
 
   function createRoom() {
+    if (!selectedMode) return;
     const code = makeRoomCode();
     window.history.replaceState({}, "", `/?room=${code}&host=1`);
     setRoomCode(code);
     setRequestedHost(true);
+    setMode(selectedMode);
+    setShowInvite(selectedMode === "watch");
     setScreen("room");
   }
 
@@ -167,6 +177,19 @@ export default function RoomClient({
       if (realtimeConfigured) broadcast({ kind: "queue:add", item });
     }
     setVideoUrl("");
+  }
+
+  function launchVideo(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const id = getYouTubeId(launchUrl);
+    if (!id) {
+      setNotice("Paste a valid YouTube link to start the room.");
+      return;
+    }
+    setActiveVideoId(id);
+    if (realtimeConfigured) broadcast({ kind: "video:set", videoId: id });
+    setShowInvite(false);
+    setNotice("YouTube video is ready for everyone in this room.");
   }
 
   function changeMode(nextMode: RoomMode) {
@@ -201,12 +224,14 @@ export default function RoomClient({
     else await appRef.current.requestFullscreen();
   }
 
+  const videoForm = <form className="add-video" onSubmit={(event) => { event.preventDefault(); addVideo(); }}><Link2 size={18} /><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder={mode === "order" ? "Paste a YouTube link to order" : "Paste a YouTube link to add it"} /><button type="submit" disabled={!getYouTubeId(videoUrl)}>{mode === "watch" ? "Add to queue" : isHost ? "Add to list" : "Send order"} <Plus size={17} /></button></form>;
+
   if (screen === "home") {
     return (
       <main className="home-shell">
         <nav className="topbar"><a className="brand" href="#top"><span className="brand-mark">S</span>sidewave</a><span className="beta">BETA</span><a href="#how" className="how-link">How it works <ChevronRight size={15} /></a></nav>
         <section className="home-hero" id="top">
-          <div className="hero-copy"><p className="eyebrow"><Radio size={14} /> YOUR ROOM, ONE WAVE</p><h1>Press play.<br /><i>Be there.</i></h1><p className="hero-subtitle">Watch YouTube together without the awkward “3, 2, 1, go.” Make a room, invite your people, and let the queue do its thing.</p><button className="primary-button" onClick={createRoom}>Create a room <ChevronRight size={19} /></button></div>
+          <div className="hero-copy"><p className="eyebrow"><Radio size={14} /> YOUR ROOM, ONE WAVE</p><h1>Press play.<br /><i>Be there.</i></h1><p className="hero-subtitle">Watch YouTube together without the awkward “3, 2, 1, go.” Choose how your room works, then invite your people.</p><div className="home-mode-picker" role="radiogroup" aria-label="Choose room mode"><button className={selectedMode === "watch" ? "selected" : ""} onClick={() => setSelectedMode("watch")} role="radio" aria-checked={selectedMode === "watch"}><MonitorUp size={19} /><span><strong>Watch together</strong><small>Sync playback and queue</small></span></button><button className={selectedMode === "order" ? "selected" : ""} onClick={() => setSelectedMode("order")} role="radio" aria-checked={selectedMode === "order"}><Send size={19} /><span><strong>Order to host</strong><small>Requests go to one screen</small></span></button></div><button className="primary-button" onClick={createRoom} disabled={!selectedMode}>Create a room <ChevronRight size={19} /></button></div>
           <div className="room-preview" aria-label="Preview of a Sidewave room"><div className="preview-top"><span><span className="live-dot" /> LIVE ROOM</span><span>06:42 PM</span></div><div className="preview-video"><span className="video-orb orb-a" /><span className="video-orb orb-b" /><button aria-label="Preview play"><Play fill="currentColor" size={30} /></button><p>THE LATE SHIFT</p></div><div className="preview-bottom"><div><strong>After dark</strong><span>Lo-fi dreamscape</span></div><div className="stacked-avatars"><b>R</b><b>T</b><b>+</b></div></div></div>
         </section>
         <section className="join-strip"><div><p className="eyebrow"><Link2 size={14} /> GOT AN INVITE?</p><h2>Enter the room code.</h2></div><div className="join-form"><label htmlFor="room-code" className="sr-only">Room code</label><input id="room-code" value={joinCode} onChange={(event) => setJoinCode(event.target.value)} onKeyDown={(event) => event.key === "Enter" && joinRoom()} placeholder="WAVE-XXXX" /><button onClick={joinRoom} aria-label="Join room"><ChevronRight size={22} /></button></div></section>
@@ -218,15 +243,17 @@ export default function RoomClient({
   return (
     <main className="room-shell" ref={appRef}>
       <header className="room-header"><button className="brand room-brand" onClick={() => setScreen("home")}><span className="brand-mark">S</span>sidewave</button><div className="room-status"><span className={`sync-dot ${status}`} /> {status === "connected" ? "Synced live" : status === "connecting" ? "Connecting" : status === "disabled" ? "Demo mode" : "Connection issue"} <span className="code-chip">{roomCode}</span></div><div className="header-actions"><button className="icon-button" onClick={() => setShowInvite(true)} aria-label="Invite people"><Users size={19} /></button><button className="icon-button" onClick={toggleFullscreen} aria-label="Toggle fullscreen"><Expand size={19} /></button><button className="menu-button"><Menu size={20} /></button></div></header>
-      <div className="room-layout">
-        <section className="watch-panel"><div className="video-frame"><iframe ref={playerRef} src="https://www.youtube-nocookie.com/embed/M7lc1UVf-VE?rel=0&enablejsapi=1" title="Now playing YouTube video" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /><div className="video-label"><span>NOW PLAYING</span><strong>YouTube Player API Demo</strong></div><button className="floating-fullscreen" onClick={toggleFullscreen} aria-label="Fullscreen player"><Expand size={18} /></button></div>
+      <div className={`room-layout ${mode === "order" ? "order-layout" : ""}`}>
+        <section className="watch-panel"><div className="video-frame"><iframe ref={playerRef} src={`https://www.youtube-nocookie.com/embed/${activeVideoId}?rel=0&enablejsapi=1`} title="Now playing YouTube video" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /><div className="video-label"><span>NOW PLAYING</span><strong>YouTube video</strong></div><button className="floating-fullscreen" onClick={toggleFullscreen} aria-label="Fullscreen player"><Expand size={18} /></button></div>
           <div className="now-playing"><div className="artwork"><Music2 size={25} /></div><div className="track-info"><p>YOUTUBE SESSION</p><h2>watching in the same moment</h2><span>{isHost ? "You are the host" : "You are listening"} · {members.length || 1} online</span></div><button className="play-button" onClick={togglePlayback} aria-label={isPlaying ? "Pause session" : "Resume session"}>{isPlaying ? <Pause fill="currentColor" size={20} /> : <Play fill="currentColor" size={20} />}</button><div className="timeline"><span style={{ width: "38%" }} /></div><span className="time">12:48 / 32:10</span></div>
           <div className="mode-switch" role="tablist" aria-label="Room mode"><button className={mode === "watch" ? "active" : ""} onClick={() => changeMode("watch")} role="tab" aria-selected={mode === "watch"}><MonitorUp size={18} /><span>Watch together</span><small>Everyone stays in sync</small></button><button className={mode === "order" ? "active" : ""} onClick={() => changeMode("order")} role="tab" aria-selected={mode === "order"}><Send size={18} /><span>Order to host</span><small>Requests go to the host</small></button></div>
-          <form className="add-video" onSubmit={(event) => { event.preventDefault(); addVideo(); }}><Link2 size={18} /><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="Paste a YouTube link to add it" /><button type="submit" disabled={!getYouTubeId(videoUrl)}>{mode === "watch" ? "Add to queue" : "Send order"} <Plus size={17} /></button></form>{notice && <p className="room-notice">{notice}</p>}
+          {mode !== "order" && videoForm}{mode !== "order" && notice && <p className="room-notice">{notice}</p>}
         </section>
         <aside className="side-panel"><div className="side-heading"><div><p className="eyebrow">UP NEXT</p><h2>The wave queue</h2></div><span>{queue.length}</span></div><div className="queue-list">{queue.map((item, index) => <button key={item.id} className="queue-item" onClick={() => { setIsPlaying(true); controlPlayer("play"); if (realtimeConfigured) broadcast({ kind: "player", action: "play" }); }}><span className="queue-number">{String(index + 1).padStart(2, "0")}</span><Image src={item.thumb} alt="" width={43} height={31} unoptimized /><span className="queue-copy"><strong>{item.title}</strong><small>{item.channel}</small></span><small className="duration">{item.duration}</small></button>)}</div><div className="people"><div className="side-heading"><div><p className="eyebrow">IN THIS ROOM</p><h2>{members.length || 1} listener{(members.length || 1) === 1 ? "" : "s"}</h2></div><button className="add-person" onClick={() => setShowInvite(true)} aria-label="Invite friend"><Plus size={18} /></button></div><div className="people-list">{members.length ? members.map((member) => <div key={member.id}><span className="avatar avatar-you">{member.name.slice(-1)}</span><span>{member.name}{member.isHost && <small> (Host)</small>}</span>{member.isHost ? <Crown size={15} /> : <span className="presence" />}</div>) : <div><span className="avatar avatar-you">Y</span><span>You <small>({status === "disabled" ? "Demo" : "Joining"})</small></span><span className="presence" /></div>}</div></div></aside>
+        {mode === "order" && <section className="order-input-panel">{videoForm}{notice && <p className="room-notice">{notice}</p>}</section>}
+        {mode === "order" && <aside className="order-qr-card"><p className="eyebrow"><Users size={14} /> SCAN TO ORDER</p><h2>Let guests pick</h2><p>Keep this QR on your shared screen. Guests scan it, then send a YouTube order from their phone.</p><div className="order-qr"><QRCodeSVG value={inviteUrl} size={100} bgColor="#eef0ff" fgColor="#11142d" level="M" includeMargin /></div><div className="order-link"><span>{inviteUrl}</span><button onClick={copyInvite} aria-label="Copy room link">{copied ? <Check size={16} /> : <Copy size={16} />}</button></div></aside>}
       </div>
-      {showInvite && <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowInvite(false)}><section className="invite-card" role="dialog" aria-modal="true" aria-labelledby="invite-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowInvite(false)} aria-label="Close invite dialog"><X size={18} /></button><p className="eyebrow"><Sparkles size={14} /> BRING YOUR PEOPLE</p><h2 id="invite-title">Join this wave</h2><p className="invite-description">Scan this code or send the room link. No sign-in required.</p><div className="qr-wrap"><QRCodeSVG value={inviteUrl} size={170} bgColor="#eef0ff" fgColor="#11142d" level="M" includeMargin /></div><div className="invite-link"><span>{inviteUrl}</span><button onClick={copyInvite}>{copied ? <Check size={17} /> : <Copy size={17} />}{copied ? "Copied" : "Copy"}</button></div><div className="invite-code">Room code <strong>{roomCode}</strong></div></section></div>}
+      {showInvite && <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowInvite(false)}><section className="invite-card" role="dialog" aria-modal="true" aria-labelledby="invite-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowInvite(false)} aria-label="Close invite dialog"><X size={18} /></button><p className="eyebrow"><Sparkles size={14} /> ROOM READY</p><h2 id="invite-title">Invite, then press play</h2><p className="invite-description">Share the QR or room link, then choose the first YouTube video for this {mode === "watch" ? "watch-together" : "host-order"} room.</p><div className="qr-wrap"><QRCodeSVG value={inviteUrl} size={150} bgColor="#eef0ff" fgColor="#11142d" level="M" includeMargin /></div><div className="invite-link"><span>{inviteUrl}</span><button onClick={copyInvite}>{copied ? <Check size={17} /> : <Copy size={17} />}{copied ? "Copied" : "Copy"}</button></div><div className="invite-code">Room code <strong>{roomCode}</strong></div><form className="launch-video" onSubmit={launchVideo}><label htmlFor="launch-youtube">First YouTube link</label><div><input id="launch-youtube" value={launchUrl} onChange={(event) => setLaunchUrl(event.target.value)} placeholder="Paste a YouTube link" /><button type="submit" disabled={!getYouTubeId(launchUrl)}>Start room <Play fill="currentColor" size={14} /></button></div></form><button className="choose-later" onClick={() => setShowInvite(false)}>Choose a video later</button></section></div>}
       {fullscreen && <div className="fullscreen-note">Press Esc to exit fullscreen</div>}
     </main>
   );
