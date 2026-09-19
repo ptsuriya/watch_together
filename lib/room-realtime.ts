@@ -5,26 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ensureSession, getSupabaseBrowserClient, isSupabaseConfigured, type SupabaseBrowserConfig,
 } from "./supabase";
-
-export type RoomMode = "watch" | "order";
-
-export type QueueItem = {
-  id: string;
-  videoId: string;
-  title: string;
-  channel: string;
-  duration: string;
-  thumb: string;
-};
-
-export type RoomEvent =
-  | { kind: "queue:add"; item: QueueItem }
-  | { kind: "order:video"; item: QueueItem }
-  | { kind: "mode:set"; mode: RoomMode }
-  | { kind: "video:set"; videoId: string }
-  | { kind: "player"; action: "play" | "pause" | "seek"; seconds?: number }
-  | { kind: "state:request"; fromHost?: boolean }
-  | { kind: "state:sync"; queue: QueueItem[]; mode: RoomMode; isPlaying: boolean; activeVideoId: string | null };
+import type { RoomEvent } from "./room-state";
 
 export type RealtimeStatus = "disabled" | "connecting" | "connected" | "error" | "room-not-found";
 export type RoomMember = { id: string; name: string; isHost: boolean };
@@ -54,7 +35,7 @@ const MAX_RETRY_DELAY_MS = 15_000;
 let pendingLeave: Promise<unknown> = Promise.resolve();
 
 function displayName(listenerName: string, userId: string) {
-  return listenerName.trim() || `Listener ${userId.slice(0, 4)}`;
+  return listenerName.trim() || `ผู้ฟัง ${userId.slice(0, 4).toUpperCase()}`;
 }
 
 export function useRoomRealtime({
@@ -62,7 +43,8 @@ export function useRoomRealtime({
 }: Options) {
   const [status, setStatus] = useState<RealtimeStatus>(isSupabaseConfigured(config) ? "connecting" : "disabled");
   const [members, setMembers] = useState<RoomMember[]>([]);
-  const [resolvedIsHost, setResolvedIsHost] = useState(false);
+  const [resolvedIsHost, setResolvedIsHost] = useState<boolean | null>(null);
+  const [selfId, setSelfId] = useState<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const onEventRef = useRef(onEvent);
   const onResyncRef = useRef(onResync);
@@ -146,6 +128,7 @@ export function useRoomRealtime({
       const isStale = () => disposed || id !== attempt;
 
       setStatus("connecting");
+      setResolvedIsHost(null);
       await leaveChannel();
       if (isStale()) return;
 
@@ -174,6 +157,7 @@ export function useRoomRealtime({
       userIdRef.current = userId;
       hostRef.current = actualIsHost;
       setResolvedIsHost(actualIsHost);
+      setSelfId(userId);
 
       // DO NOTHING on conflict: room_members has no UPDATE policy, so a merge upsert is rejected for anyone rejoining.
       const { error: membershipError } = await supabase
@@ -253,6 +237,7 @@ export function useRoomRealtime({
   }, [config, enabled, requestedHost, roomCode]);
 
   const realtimeConfigured = isSupabaseConfigured(config);
-  const isHost = realtimeConfigured ? resolvedIsHost : requestedHost;
-  return { status, members, isHost, broadcast, realtimeConfigured };
+  // Until the room row is read, trust the host link so the host does not see the guest screen while connecting.
+  const isHost = realtimeConfigured ? resolvedIsHost ?? requestedHost : requestedHost;
+  return { status, members, isHost, selfId, broadcast, realtimeConfigured };
 }

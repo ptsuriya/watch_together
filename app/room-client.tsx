@@ -1,15 +1,35 @@
 "use client";
 
-import { QRCodeSVG } from "qrcode.react";
-import Image from "next/image";
-import {
-  Check, ChevronRight, Copy, Crown, Expand, Link2,
-  Menu, MonitorUp, Music2, Pause, Play, Plus, Radio, Send, Sparkles, Users, X,
-} from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMidiBridge } from "../lib/midi-bridge";
+import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  type QueueItem, type RoomEvent, type RoomMember, type RoomMode, type RoomSelf, useRoomRealtime,
-} from "../lib/room-realtime";
+  createRoomState, hasContent, reduceRoom, sanitizeGuestIntent, sanitizeState,
+  type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
+} from "../lib/room-state";
+import { isSupabaseConfigured } from "../lib/supabase";
+import { lookupVideo, parseYouTubeId } from "../lib/youtube";
+import { HomeScreen } from "./components/home-screen";
+import { RemoteRoom, WaitingRoom } from "./components/remote-room";
+import type { AddVideoResult, RoomModel, Toast } from "./components/room-model";
+import { InviteDialog, NameDialog, NotesDialog, RoomHeader } from "./components/room-panels";
+import { TvRoom } from "./components/tv-room";
+import { Art, ToastStack } from "./components/ui";
+import { WatchRoom } from "./components/watch-room";
+import { type PlaybackFollow, type PlaybackResume, YouTubePlayer } from "./components/youtube-player";
+
+const NAME_KEY = "sidewave-listener-name";
+const BROADCAST_DELAY_MS = 40;
+// Typing in the notes sends at most a few updates per second.
+const NOTES_BROADCAST_DELAY_MS = 350;
+// Guests in watch mode correct their position from these snapshots; other screens only need an occasional refresh.
+const HEARTBEAT_WATCHING_MS = 4000;
+const HEARTBEAT_IDLE_MS = 15_000;
+const TOAST_MS = 4000;
+const SKIP_AFTER_ERROR_MS = 2500;
+
+type DialogKind = "invite" | "name" | "notes";
 
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -17,20 +37,12 @@ function makeRoomCode() {
   return `WAVE-${Array.from(values, (value) => alphabet[value % alphabet.length]).join("")}`;
 }
 
-function getYouTubeId(value: string) {
-  const match = value.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{11})/);
-  return match?.[1] ?? null;
-}
-
-function makeQueueItem(id: string): QueueItem {
-  return {
-    id: crypto.randomUUID(),
-    videoId: id,
-    title: "New video from YouTube",
-    channel: "Added by you",
-    duration: "—",
-    thumb: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
-  };
+function readSavedName() {
+  try {
+    return window.localStorage.getItem(NAME_KEY) ?? "";
+  } catch {
+    return "";
+  }
 }
 
 export default function RoomClient({
@@ -47,301 +59,396 @@ export default function RoomClient({
   supabaseKey?: string;
 }) {
   const [screen, setScreen] = useState<"home" | "room">(sharedRoom ? "room" : "home");
-  const [roomCode, setRoomCode] = useState(sharedRoom?.toUpperCase() ?? "WAVE-8K4N");
+  const [roomCode, setRoomCode] = useState(sharedRoom?.toUpperCase() ?? "");
   const [requestedHost, setRequestedHost] = useState(initialRequestedHost);
-  const [joinCode, setJoinCode] = useState("");
-  const [selectedMode, setSelectedMode] = useState<RoomMode | null>(null);
-  const [mode, setMode] = useState<RoomMode>(initialMode ?? "watch");
-  const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [videoUrl, setVideoUrl] = useState("");
-  const [launchUrl, setLaunchUrl] = useState("");
-  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [showInvite, setShowInvite] = useState(false);
-  const [showNameEditor, setShowNameEditor] = useState(false);
+  const [state, setState] = useState<RoomState>(() => createRoomState(initialMode ?? "watch"));
+  /** A guest has the host's state. Until then it cannot know the mode, queue or video. */
+  const [synced, setSynced] = useState(false);
+  const [follow, setFollow] = useState<PlaybackFollow>();
+  const [resume, setResume] = useState<PlaybackResume>();
   const [listenerName, setListenerName] = useState("");
-  const [nameDraft, setNameDraft] = useState("");
-  const [appOrigin, setAppOrigin] = useState("https://sidewave.app");
-  const [copied, setCopied] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [notice, setNotice] = useState("");
-  const appRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<HTMLIFrameElement>(null);
-  const broadcastRef = useRef<(event: RoomEvent) => void>(() => undefined);
+  const [dialog, setDialog] = useState<DialogKind | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [keyFlash, setKeyFlash] = useState(0);
+  const [appOrigin, setAppOrigin] = useState("");
+  const shellRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef(state);
   const isHostRef = useRef(false);
-  const supabaseConfig = useMemo(
-    () => ({ url: supabaseUrl, key: supabaseKey }),
-    [supabaseKey, supabaseUrl],
-  );
+  const selfNameRef = useRef("");
+  const broadcastRef = useRef<(event: RoomEvent) => void>(() => undefined);
+  const timeRef = useRef<(() => number | null) | null>(null);
+  const sessionRef = useRef("");
+  const pendingAddsRef = useRef(new Set<string>());
+  const broadcastTimerRef = useRef<number | undefined>(undefined);
+  const broadcastDueRef = useRef(0);
+  const toastIdRef = useRef(0);
+  const connectedRef = useRef(false);
+  const midi = useMidiBridge();
+  const sendStepsRef = useRef(midi.sendSteps);
+  const supabaseConfig = useMemo(() => ({ url: supabaseUrl, key: supabaseKey }), [supabaseKey, supabaseUrl]);
+  const realtimeConfigured = isSupabaseConfigured(supabaseConfig);
 
-  const hasRoomState = queue.length > 0 || activeVideoId !== null;
-
-  const controlPlayer = useCallback((action: "play" | "pause" | "seek", seconds?: number) => {
-    const command = action === "play" ? "playVideo" : action === "pause" ? "pauseVideo" : "seekTo";
-    playerRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "command", func: command, args: action === "seek" ? [seconds ?? 0, true] : [] }),
-      "https://www.youtube-nocookie.com",
-    );
+  const replaceState = useCallback((next: RoomState) => {
+    stateRef.current = next;
+    setState(next);
   }, []);
 
+  const pushToast = useCallback((text: string) => {
+    toastIdRef.current += 1;
+    const id = toastIdRef.current;
+    setToasts((current) => [...current.slice(-2), { id, text }]);
+    window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), TOAST_MS);
+  }, []);
+
+  const broadcastStateNow = useCallback(() => {
+    window.clearTimeout(broadcastTimerRef.current);
+    broadcastTimerRef.current = undefined;
+    if (!isHostRef.current) return;
+    sessionRef.current ||= crypto.randomUUID().slice(0, 8);
+    const current = stateRef.current;
+    const position = current.nowPlaying ? timeRef.current?.() ?? current.position : 0;
+    broadcastRef.current({ kind: "state", state: { ...current, session: sessionRef.current, position } });
+  }, []);
+
+  const scheduleBroadcast = useCallback((delay: number) => {
+    const due = Date.now() + delay;
+    if (broadcastTimerRef.current !== undefined && broadcastDueRef.current <= due) return;
+    window.clearTimeout(broadcastTimerRef.current);
+    broadcastDueRef.current = due;
+    broadcastTimerRef.current = window.setTimeout(broadcastStateNow, delay);
+  }, [broadcastStateNow]);
+
+  /** Applies a change as the room's source of truth. Only the host (or a room without realtime) does this. */
+  const commit = useCallback((intent: RoomIntent, options: { midi?: boolean } = {}) => {
+    const previous = stateRef.current;
+    const next = reduceRoom(previous, intent);
+    if (next === previous) return next;
+    replaceState(next);
+    scheduleBroadcast(intent.kind === "notes" ? NOTES_BROADCAST_DELAY_MS : BROADCAST_DELAY_MS);
+    if (intent.kind === "key" || intent.kind === "mode") {
+      // A new song resets the key by itself in Transpose, so only explicit key changes are sent to it.
+      const steps = next.key - previous.key;
+      if (steps !== 0 && options.midi !== false) sendStepsRef.current(steps);
+      if (intent.kind === "key") setKeyFlash((count) => count + 1);
+    }
+    if (intent.kind === "add") pushToast(`${intent.item.addedBy} เพิ่ม “${intent.item.title}”`);
+    return next;
+  }, [pushToast, replaceState, scheduleBroadcast]);
+
+  const dispatch = useCallback((intent: RoomIntent) => {
+    if (isHostRef.current || !realtimeConfigured) {
+      commit(intent);
+      return;
+    }
+    // Broadcasts sent while the channel is down are dropped, so say so instead of letting the tap vanish.
+    if (!connectedRef.current) {
+      pushToast("ยังเชื่อมต่อห้องไม่ได้ รอสักครู่แล้วลองอีกครั้ง");
+      return;
+    }
+    const guestIntent = sanitizeGuestIntent(intent);
+    if (guestIntent) broadcastRef.current({ kind: "intent", intent: guestIntent });
+  }, [commit, pushToast, realtimeConfigured]);
+
+  const addVideo = useCallback(async (input: string): Promise<AddVideoResult> => {
+    const videoId = parseYouTubeId(input);
+    if (!videoId) return { ok: false, message: "ไม่พบลิงก์ YouTube ในข้อความนี้" };
+    const lookup = await lookupVideo(videoId);
+    if (!lookup.playable) {
+      return {
+        ok: false,
+        message: lookup.reason === "embed"
+          ? "เจ้าของวิดีโอนี้ไม่อนุญาตให้เล่นนอก YouTube ลองเลือกคลิปอื่น"
+          : "ไม่พบวิดีโอนี้ อาจถูกลบหรือเป็นวิดีโอส่วนตัว",
+      };
+    }
+    const item: QueueItem = {
+      id: crypto.randomUUID(),
+      videoId,
+      title: lookup.title || "วิดีโอ YouTube",
+      channel: lookup.channel ?? "",
+      addedBy: selfNameRef.current,
+    };
+    if (isHostRef.current || !realtimeConfigured) {
+      const next = commit({ kind: "add", item });
+      if (next.nowPlaying?.id === item.id) return { ok: true, message: "เริ่มเล่นแล้ว" };
+      const index = next.queue.findIndex((queued) => queued.id === item.id);
+      return index >= 0 ? { ok: true, message: `เข้าคิวแล้ว ลำดับที่ ${index + 1}` } : { ok: false, message: "คิวเต็มแล้ว" };
+    }
+    if (!connectedRef.current) return { ok: false, message: "ยังเชื่อมต่อห้องไม่ได้ รอสักครู่แล้วลองอีกครั้ง" };
+    pendingAddsRef.current.add(item.id);
+    broadcastRef.current({ kind: "intent", intent: { kind: "add", item } });
+    return { ok: true, message: "ส่งแล้ว รอเข้าคิว…" };
+  }, [commit, realtimeConfigured]);
+
+  const confirmPendingAdds = useCallback((next: RoomState) => {
+    for (const id of pendingAddsRef.current) {
+      const index = next.queue.findIndex((queued) => queued.id === id);
+      if (next.nowPlaying?.id === id) pushToast("เพลงของคุณกำลังเล่นแล้ว");
+      else if (index >= 0) pushToast(`เพลงของคุณเข้าคิวแล้ว ลำดับที่ ${index + 1}`);
+      else continue;
+      pendingAddsRef.current.delete(id);
+    }
+  }, [pushToast]);
+
   const handleRoomEvent = useCallback((event: RoomEvent) => {
-    if (event.kind === "queue:add") {
-      setQueue((current) => current.some((item) => item.id === event.item.id) ? current : [...current, event.item]);
-      return;
-    }
-    if (event.kind === "order:video") {
-      if (isHostRef.current) {
-        setQueue((current) => current.some((item) => item.id === event.item.id) ? current : [...current, event.item]);
-        setActiveVideoId(event.item.videoId);
-        setIsPlaying(true);
-        broadcastRef.current({ kind: "queue:add", item: event.item });
+    switch (event.kind) {
+      case "intent": {
+        if (!isHostRef.current) return;
+        const intent = sanitizeGuestIntent(event.intent);
+        if (intent) commit(intent);
+        return;
       }
-      return;
-    }
-    if (event.kind === "mode:set") {
-      setMode(event.mode);
-      return;
-    }
-    if (event.kind === "video:set") {
-      setActiveVideoId(event.videoId);
-      setIsPlaying(true);
-      return;
-    }
-    if (event.kind === "player") {
-      setIsPlaying(event.action === "play");
-      controlPlayer(event.action, event.seconds);
-      return;
-    }
-    if (event.kind === "state:request") {
-      // The host always answers. A guest answers only a host that lost its queue, e.g. after a reload.
-      if (isHostRef.current || (event.fromHost && hasRoomState)) {
-        broadcastRef.current({ kind: "state:sync", queue, mode, isPlaying, activeVideoId });
+      case "state": {
+        if (isHostRef.current) return;
+        const next = sanitizeState(event.state);
+        if (!next) return;
+        const current = stateRef.current;
+        if (next.session !== current.session && !hasContent(next) && hasContent(current)) {
+          // The host reloaded and lost the room. Hand it back instead of wiping it here.
+          broadcastRef.current({ kind: "state:recover", state: current });
+          return;
+        }
+        replaceState(next);
+        setSynced(true);
+        setFollow({ position: next.position, at: Date.now() });
+        confirmPendingAdds(next);
+        return;
       }
-      return;
-    }
-    if (event.kind === "state:sync") {
-      const incomingEmpty = event.queue.length === 0 && event.activeVideoId === null;
-      if (isHostRef.current) {
-        // The host keeps its own mode and adopts a queue only to recover one it lost.
-        if (hasRoomState || incomingEmpty) return;
-      } else {
-        setMode(event.mode);
-        // Keep the queue rather than take an empty one from a host that just reloaded.
-        if (incomingEmpty && hasRoomState) return;
+      case "state:request": {
+        if (isHostRef.current) broadcastStateNow();
+        else if (event.fromHost && hasContent(stateRef.current)) {
+          broadcastRef.current({ kind: "state:recover", state: stateRef.current });
+        }
+        return;
       }
-      setQueue(event.queue);
-      setIsPlaying(event.isPlaying);
-      setActiveVideoId(event.activeVideoId);
-      controlPlayer(event.isPlaying ? "play" : "pause");
+      case "state:recover": {
+        if (!isHostRef.current || hasContent(stateRef.current)) return;
+        const recovered = sanitizeState(event.state);
+        if (!recovered || !hasContent(recovered)) return;
+        // The host keeps the mode from its own link. The reloaded video starts in its original key, like Transpose.
+        replaceState({ ...recovered, mode: stateRef.current.mode, key: 0 });
+        if (recovered.nowPlaying) setResume({ itemId: recovered.nowPlaying.id, position: recovered.position, at: Date.now() });
+        broadcastStateNow();
+        return;
+      }
     }
-  }, [activeVideoId, controlPlayer, hasRoomState, isPlaying, mode, queue]);
+  }, [broadcastStateNow, commit, confirmPendingAdds, replaceState]);
 
   const handleResync = useCallback(({ isHost: selfIsHost }: RoomSelf) => {
     if (!selfIsHost) broadcastRef.current({ kind: "state:request" });
-    else if (!hasRoomState) broadcastRef.current({ kind: "state:request", fromHost: true });
-  }, [hasRoomState]);
+    else if (!hasContent(stateRef.current)) broadcastRef.current({ kind: "state:request", fromHost: true });
+    else broadcastStateNow();
+  }, [broadcastStateNow]);
 
   const handleMemberJoin = useCallback((member: RoomMember, { isHost: selfIsHost }: RoomSelf) => {
-    if (selfIsHost && !member.isHost) {
-      broadcastRef.current({ kind: "state:sync", queue, mode, isPlaying, activeVideoId });
-    } else if (!selfIsHost && member.isHost) {
-      broadcastRef.current({ kind: "state:request" });
-    }
-  }, [activeVideoId, isPlaying, mode, queue]);
+    if (selfIsHost && !member.isHost) broadcastStateNow();
+    else if (!selfIsHost && member.isHost) broadcastRef.current({ kind: "state:request" });
+  }, [broadcastStateNow]);
 
-  const { status, members, isHost, broadcast, realtimeConfigured } = useRoomRealtime({
+  const { status, members, isHost, selfId, broadcast } = useRoomRealtime({
     enabled: screen === "room",
     roomCode,
     requestedHost,
-    listenerName,
+    listenerName: listenerName || (requestedHost ? "โฮสต์" : ""),
     onEvent: handleRoomEvent,
     onResync: handleResync,
     onMemberJoin: handleMemberJoin,
     supabase: supabaseConfig,
   });
 
-  useEffect(() => {
-    const savedName = window.localStorage.getItem("sidewave-listener-name");
-    const timeoutId = savedName ? window.setTimeout(() => setListenerName(savedName), 0) : undefined;
-    return () => {
-      if (timeoutId) window.clearTimeout(timeoutId);
-    };
-  }, []);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => setAppOrigin(window.location.origin), 0);
-    return () => window.clearTimeout(timeoutId);
-  }, []);
-
-  useEffect(() => {
-    broadcastRef.current = broadcast;
-  }, [broadcast]);
+  const selfName = listenerName || (isHost ? "โฮสต์" : selfId ? `ผู้ฟัง ${selfId.slice(0, 4).toUpperCase()}` : "ผู้ฟัง");
+  const hostOnline = members.some((member) => member.isHost);
 
   useEffect(() => {
     isHostRef.current = isHost;
-  }, [isHost]);
-
-  const inviteUrl = useMemo(() => {
-    return `${appOrigin}/?room=${roomCode}${mode === "order" ? "&mode=order" : ""}`;
-  }, [appOrigin, mode, roomCode]);
-
-  useEffect(() => {
-    const handleFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener("fullscreenchange", handleFullscreen);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreen);
-  }, []);
+    connectedRef.current = status === "connected";
+    broadcastRef.current = broadcast;
+    selfNameRef.current = selfName;
+    sendStepsRef.current = midi.sendSteps;
+  }, [broadcast, isHost, midi.sendSteps, selfName, status]);
 
   useEffect(() => {
-    if (!activeVideoId || !isPlaying) return;
-    const timeoutId = window.setTimeout(() => controlPlayer("play"), 500);
+    const timeoutId = window.setTimeout(() => {
+      const saved = readSavedName();
+      if (saved) setListenerName(saved);
+      // Ask a guest who arrived from a QR for a name once, so their songs are not credited to "ผู้ฟัง".
+      else if (sharedRoom && !initialRequestedHost) setDialog("name");
+      setAppOrigin(window.location.origin);
+    }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [activeVideoId, controlPlayer, isPlaying]);
+  }, [initialRequestedHost, sharedRoom]);
 
-  function createRoom() {
-    if (!selectedMode) return;
+  useEffect(() => {
+    if (!isHost || status !== "connected") return;
+    const interval = state.mode === "watch" && state.isPlaying ? HEARTBEAT_WATCHING_MS : HEARTBEAT_IDLE_MS;
+    const intervalId = window.setInterval(broadcastStateNow, interval);
+    return () => window.clearInterval(intervalId);
+  }, [broadcastStateNow, isHost, state.isPlaying, state.mode, status]);
+
+  useEffect(() => () => window.clearTimeout(broadcastTimerRef.current), []);
+
+  const handlePlayerPlaying = useCallback((playing: boolean) => {
+    commit({ kind: "playback", playing });
+    // Seeking with YouTube's own controls also lands here; send the new position even when nothing else changed.
+    scheduleBroadcast(BROADCAST_DELAY_MS);
+  }, [commit, scheduleBroadcast]);
+
+  const handlePlayerEnded = useCallback(() => {
+    commit({ kind: "next" });
+  }, [commit]);
+
+  const handlePlayerError = useCallback(() => {
+    const failedId = stateRef.current.nowPlaying?.id;
+    pushToast("วิดีโอนี้เล่นในห้องไม่ได้ กำลังข้ามไปเพลงถัดไป");
+    window.setTimeout(() => {
+      if (failedId && stateRef.current.nowPlaying?.id === failedId) commit({ kind: "next" });
+    }, SKIP_AFTER_ERROR_MS);
+  }, [commit, pushToast]);
+
+  function resetRoom(mode: RoomMode) {
+    sessionRef.current = crypto.randomUUID().slice(0, 8);
+    pendingAddsRef.current.clear();
+    replaceState(createRoomState(mode));
+    setSynced(false);
+    setFollow(undefined);
+    setResume(undefined);
+    setToasts([]);
+  }
+
+  function createRoom(mode: RoomMode) {
     const code = makeRoomCode();
-    // The mode stays in the host URL so a reload restores it.
-    window.history.replaceState({}, "", `/?room=${code}&host=1&mode=${selectedMode}`);
+    // The mode stays in the host link so a reload restores it.
+    window.history.replaceState({}, "", `/?room=${code}&host=1&mode=${mode}`);
+    resetRoom(mode);
     setRoomCode(code);
     setRequestedHost(true);
-    setMode(selectedMode);
-    setShowInvite(selectedMode === "watch");
+    // The TV screen shows its QR all the time; watch rooms start by inviting people.
+    setDialog(mode === "watch" ? "invite" : null);
     setScreen("room");
   }
 
-  function joinRoom() {
-    if (!joinCode.trim()) return;
-    const code = joinCode.trim().toUpperCase();
+  function joinRoom(code: string) {
     window.history.replaceState({}, "", `/?room=${code}`);
+    resetRoom("watch");
     setRoomCode(code);
     setRequestedHost(false);
+    setDialog(listenerName ? null : "name");
     setScreen("room");
-  }
-
-  function addVideo() {
-    const id = getYouTubeId(videoUrl);
-    if (!id) return;
-    const item = makeQueueItem(id);
-    if (mode === "order" && realtimeConfigured && !isHost) {
-      broadcast({ kind: "order:video", item });
-      setNotice("Order sent to the host.");
-    } else {
-      setQueue((current) => [...current, item]);
-      const shouldStart = mode === "order" ? true : !activeVideoId;
-      if (shouldStart) {
-        setActiveVideoId(id);
-        setIsPlaying(true);
-      }
-      if (realtimeConfigured) {
-        broadcast({ kind: "queue:add", item });
-        if (shouldStart && mode !== "order") {
-          broadcast({ kind: "video:set", videoId: id });
-          broadcast({ kind: "player", action: "play" });
-        }
-      }
-    }
-    setVideoUrl("");
-  }
-
-  function launchVideo(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const id = getYouTubeId(launchUrl);
-    if (!id) {
-      setNotice("Paste a valid YouTube link to start the room.");
-      return;
-    }
-    setActiveVideoId(id);
-    setIsPlaying(true);
-    if (realtimeConfigured) broadcast({ kind: "video:set", videoId: id });
-    if (realtimeConfigured) broadcast({ kind: "player", action: "play" });
-    setShowInvite(false);
-    setNotice("YouTube video is ready for everyone in this room.");
-  }
-
-  function changeMode(nextMode: RoomMode) {
-    if (realtimeConfigured && !isHost) {
-      setNotice("Only the host can change the room mode.");
-      return;
-    }
-    setMode(nextMode);
-    if (requestedHost) window.history.replaceState({}, "", `/?room=${roomCode}&host=1&mode=${nextMode}`);
-    if (realtimeConfigured) broadcast({ kind: "mode:set", mode: nextMode });
-  }
-
-  function togglePlayback() {
-    if (mode === "order" && realtimeConfigured && !isHost) {
-      setNotice("Only the host controls playback in Order mode.");
-      return;
-    }
-    const action = isPlaying ? "pause" : "play";
-    setIsPlaying(!isPlaying);
-    controlPlayer(action);
-    if (realtimeConfigured) broadcast({ kind: "player", action });
-  }
-
-  async function copyInvite() {
-    await navigator.clipboard?.writeText(inviteUrl);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  }
-
-  async function toggleFullscreen() {
-    if (!appRef.current) return;
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await appRef.current.requestFullscreen();
   }
 
   function returnHome() {
+    if (isHost && hasContent(stateRef.current) && !window.confirm("ออกจากห้อง? คิวและวิดีโอจะหายสำหรับทุกคนในห้อง")) return;
     window.history.replaceState({}, "", "/");
     setRequestedHost(false);
+    setDialog(null);
     setScreen("home");
   }
 
-  function saveListenerName(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextName = nameDraft.trim().replace(/\s+/g, " ").slice(0, 32);
-    if (!nextName) return;
-    setListenerName(nextName);
-    window.localStorage.setItem("sidewave-listener-name", nextName);
-    setShowNameEditor(false);
+  function changeMode(mode: RoomMode) {
+    if (realtimeConfigured && !isHost) return;
+    const current = stateRef.current;
+    if (current.nowPlaying && (mode === "watch") !== (current.mode === "watch")) {
+      // The other layout builds a new player; carry on from the same moment.
+      setResume({ itemId: current.nowPlaying.id, position: timeRef.current?.() ?? 0, at: Date.now() });
+    }
+    commit({ kind: "mode", mode });
+    window.history.replaceState({}, "", `/?room=${roomCode}&host=1&mode=${mode}`);
   }
 
-  const videoForm = <form className="add-video" onSubmit={(event) => { event.preventDefault(); addVideo(); }}><Link2 size={18} /><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder={mode === "order" ? "Paste a YouTube link to order" : "Paste a YouTube link to add it"} /><button type="submit" disabled={!getYouTubeId(videoUrl)}>{mode === "watch" ? "Add to queue" : isHost ? "Add to list" : "Send order"} <Plus size={17} /></button></form>;
+  function saveName(name: string) {
+    setListenerName(name);
+    try {
+      window.localStorage.setItem(NAME_KEY, name);
+    } catch {
+      // The name still applies for this visit.
+    }
+    setDialog(null);
+  }
 
-  if (screen === "home") {
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await shellRef.current?.requestFullscreen();
+    } catch {
+      pushToast("เบราว์เซอร์นี้ไม่รองรับโหมดเต็มจอ");
+    }
+  }
+
+  if (screen === "home") return <HomeScreen onCreate={createRoom} onJoin={joinRoom} />;
+
+  if (status === "room-not-found") {
     return (
-      <main className="home-shell">
-        <nav className="topbar"><a className="brand" href="#top"><span className="brand-mark">S</span>sidewave</a><span className="beta">BETA</span><a href="#how" className="how-link">How it works <ChevronRight size={15} /></a></nav>
-        <section className="home-hero" id="top">
-          <div className="hero-copy"><p className="eyebrow"><Radio size={14} /> YOUR ROOM, ONE WAVE</p><h1>Press play.<br /><i>Be there.</i></h1><p className="hero-subtitle">Watch YouTube together without the awkward “3, 2, 1, go.” Choose how your room works, then invite your people.</p><div className="home-mode-picker" role="radiogroup" aria-label="Choose room mode"><button className={selectedMode === "watch" ? "selected" : ""} onClick={() => setSelectedMode("watch")} role="radio" aria-checked={selectedMode === "watch"}><MonitorUp size={19} /><span><strong>Watch together</strong><small>Sync playback and queue</small></span></button><button className={selectedMode === "order" ? "selected" : ""} onClick={() => setSelectedMode("order")} role="radio" aria-checked={selectedMode === "order"}><Send size={19} /><span><strong>Order to host</strong><small>Requests go to one screen</small></span></button></div><button className="primary-button" onClick={createRoom} disabled={!selectedMode}>Create a room <ChevronRight size={19} /></button></div>
-          <div className="room-preview" aria-label="Preview of a Sidewave room"><div className="preview-top"><span><span className="live-dot" /> LIVE ROOM</span><span>06:42 PM</span></div><div className="preview-video"><span className="video-orb orb-a" /><span className="video-orb orb-b" /><button aria-label="Preview play"><Play fill="currentColor" size={30} /></button><p>THE LATE SHIFT</p></div><div className="preview-bottom"><div><strong>After dark</strong><span>Lo-fi dreamscape</span></div><div className="stacked-avatars"><b>R</b><b>T</b><b>+</b></div></div></div>
+      <main className="room-closed bg-dots">
+        <section className="card closed-card">
+          <Art name="sleeping" className="closed-art" sizes="180px" priority />
+          <h1>ห้องนี้ปิดแล้ว</h1>
+          <p>ลิงก์หรือ QR นี้ไม่ใช่ห้องที่เปิดอยู่ ลองขอลิงก์ใหม่จากโฮสต์อีกครั้งนะ</p>
+          <button type="button" className="btn btn-primary" onClick={returnHome}>
+            <ArrowLeft size={18} aria-hidden="true" /> กลับหน้าแรก
+          </button>
         </section>
-        <section className="join-strip"><div><p className="eyebrow"><Link2 size={14} /> GOT AN INVITE?</p><h2>Enter the room code.</h2></div><div className="join-form"><label htmlFor="room-code" className="sr-only">Room code</label><input id="room-code" value={joinCode} onChange={(event) => setJoinCode(event.target.value)} onKeyDown={(event) => event.key === "Enter" && joinRoom()} placeholder="WAVE-XXXX" /><button onClick={joinRoom} aria-label="Join room"><ChevronRight size={22} /></button></div></section>
-        <section className="how-grid" id="how"><div><span>01</span><h3>Start a wave</h3><p>Create a private room in seconds. No accounts, no complicated setup.</p></div><div><span>02</span><h3>Bring the crew</h3><p>Share a room code or scan the QR. Your people arrive in one tap.</p></div><div><span>03</span><h3>Choose the flow</h3><p>Sync the watch party, or let friends send requests to the host.</p></div></section>
       </main>
     );
   }
 
-  if (status === "room-not-found") {
-    return <main className="room-closed"><section><span className="brand-mark">S</span><p className="eyebrow">ROOM CLOSED</p><h1>ห้องนี้ปิดแล้ว</h1><p>ลิงก์หรือ QR นี้ไม่ใช่ห้องที่กำลังเปิดอยู่ ลองขอลิงก์ใหม่จากโฮสต์อีกครั้งนะ</p><button className="primary-button" onClick={returnHome}>กลับหน้าหลัก <ChevronRight size={19} /></button></section></main>;
-  }
+  const inviteUrl = `${appOrigin}/?room=${roomCode}&mode=${state.mode}`;
+  const model: RoomModel = {
+    state, isHost, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
+  };
+  const tvScreen = isHost && state.mode !== "watch";
+  const waiting = !isHost && realtimeConfigured && !synced;
+  const hostAway = !isHost && realtimeConfigured && synced && status === "connected" && members.length > 0 && !hostOnline;
+
+  const player = state.nowPlaying && (isHost || state.mode === "watch") ? (
+    <YouTubePlayer
+      item={state.nowPlaying}
+      playing={state.isPlaying}
+      controls={isHost}
+      fullscreenButton={state.mode === "watch"}
+      follow={isHost ? undefined : follow}
+      resume={isHost ? resume : undefined}
+      timeRef={isHost ? timeRef : undefined}
+      onPlayingChange={isHost ? handlePlayerPlaying : undefined}
+      onEnded={isHost ? handlePlayerEnded : undefined}
+      onError={isHost ? handlePlayerError : undefined}
+    />
+  ) : null;
+
+  let view;
+  if (waiting) view = <WaitingRoom status={status} hostOnline={hostOnline} roomCode={roomCode} />;
+  else if (state.mode === "watch") {
+    view = <WatchRoom model={model} player={player} onExpandNotes={() => setDialog("notes")} onInvite={() => setDialog("invite")} />;
+  } else if (isHost) {
+    view = (
+      <TvRoom
+        model={model}
+        player={player}
+        toasts={toasts}
+        keyFlash={keyFlash}
+        midi={midi}
+        onCalibrateKey={() => commit({ kind: "key", step: 0 }, { midi: false })}
+      />
+    );
+  } else view = <RemoteRoom model={model} onRename={() => setDialog("name")} />;
 
   return (
-    <main className="room-shell" ref={appRef}>
-      <header className="room-header"><button className="brand room-brand" onClick={() => setScreen("home")}><span className="brand-mark">S</span>sidewave</button><div className="room-status"><span className={`sync-dot ${status}`} /> {status === "connected" ? "Synced live" : status === "connecting" ? "Connecting" : status === "disabled" ? "Demo mode" : "Connection issue"} <span className="code-chip">{roomCode}</span></div><div className="header-actions"><button className="icon-button" onClick={() => setShowInvite(true)} aria-label="Invite people"><Users size={19} /></button><button className="icon-button" onClick={toggleFullscreen} aria-label="Toggle fullscreen"><Expand size={19} /></button><button className="menu-button"><Menu size={20} /></button></div></header>
-      <div className={`room-layout ${mode === "order" ? "order-layout" : ""}${mode === "order" && !isHost ? " guest-order-layout" : ""}`}>
-        <section className="watch-panel"><div className="video-frame">{activeVideoId ? <><iframe ref={playerRef} src={`https://www.youtube-nocookie.com/embed/${activeVideoId}?rel=0&enablejsapi=1&autoplay=${isPlaying ? "1" : "0"}`} title="Now playing YouTube video" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /><div className="video-label"><span>NOW PLAYING</span><strong>YouTube video</strong></div><button className="floating-fullscreen" onClick={toggleFullscreen} aria-label="Fullscreen player"><Expand size={18} /></button></> : <div className="empty-player"><Music2 size={34} /><strong>No video yet</strong><span>Paste a YouTube link below to start the room.</span></div>}</div>
-          <div className="now-playing"><div className="artwork"><Music2 size={25} /></div><div className="track-info"><p>YOUTUBE SESSION</p><h2>{activeVideoId ? "watching in the same moment" : "Waiting for a video"}</h2><span>{activeVideoId ? `${isHost ? "You are the host" : "You are listening"} · ${members.length || 1} online` : isHost ? "Paste a YouTube link below to begin" : "Waiting for the host to choose a video"}</span></div><button className="play-button" onClick={togglePlayback} aria-label={isPlaying ? "Pause session" : "Resume session"} disabled={!activeVideoId}>{isPlaying ? <Pause fill="currentColor" size={20} /> : <Play fill="currentColor" size={20} />}</button><div className="timeline"><span style={{ width: "38%" }} /></div><span className="time">12:48 / 32:10</span></div>
-          <div className="mode-switch" role="tablist" aria-label="Room mode"><button className={mode === "watch" ? "active" : ""} onClick={() => changeMode("watch")} role="tab" aria-selected={mode === "watch"}><MonitorUp size={18} /><span>Watch together</span><small>Everyone stays in sync</small></button><button className={mode === "order" ? "active" : ""} onClick={() => changeMode("order")} role="tab" aria-selected={mode === "order"}><Send size={18} /><span>Order to host</span><small>Requests go to the host</small></button></div>
-          {mode !== "order" && videoForm}{mode !== "order" && notice && <p className="room-notice">{notice}</p>}
-        </section>
-        <aside className="side-panel"><div className="side-heading"><div><p className="eyebrow">UP NEXT</p><h2>The wave queue</h2></div><span>{queue.length}</span></div><div className="queue-list">{queue.length ? queue.map((item, index) => <button key={item.id} className="queue-item" onClick={() => { setActiveVideoId(item.videoId); setIsPlaying(true); controlPlayer("play"); if (realtimeConfigured && mode !== "order") { broadcast({ kind: "video:set", videoId: item.videoId }); broadcast({ kind: "player", action: "play" }); } }}><span className="queue-number">{String(index + 1).padStart(2, "0")}</span><Image src={item.thumb} alt="" width={43} height={31} unoptimized /><span className="queue-copy"><strong>{item.title}</strong><small>{item.channel}</small></span><small className="duration">{item.duration}</small></button>) : <p className="empty-queue">No orders yet. Scan the QR or paste a YouTube link.</p>}</div><div className="people"><div className="side-heading"><div><p className="eyebrow">IN THIS ROOM</p><h2>{members.length || 1} listener{(members.length || 1) === 1 ? "" : "s"}</h2></div><button className="add-person" onClick={() => setShowInvite(true)} aria-label="Invite friend"><Plus size={18} /></button></div><div className="people-list">{members.length ? members.map((member) => <div key={member.id}><span className="avatar avatar-you">{member.name.slice(-1)}</span><span>{member.name}{member.isHost && <small> (Host)</small>}</span>{member.isHost ? <Crown size={15} /> : <span className="presence" />}</div>) : <div><span className="avatar avatar-you">Y</span><span>{listenerName || "You"} <small>({status === "disabled" ? "Demo" : "Joining"})</small></span><span className="presence" /></div>}</div><button className="rename-listener" onClick={() => { setNameDraft(listenerName); setShowNameEditor(true); }}>Change your name</button></div></aside>
-        {mode === "order" && <section className="order-input-panel">{!isHost && <p className="guest-order-intro">Send a YouTube link to the host.</p>}{videoForm}{notice && <p className="room-notice">{notice}</p>}</section>}
-        {mode === "order" && <aside className="order-qr-card"><p className="eyebrow"><Users size={14} /> SCAN TO ORDER</p><h2>Let guests pick</h2><p>Keep this QR on your shared screen. Guests scan it, then send a YouTube order from their phone.</p><div className="order-qr"><QRCodeSVG value={inviteUrl} size={100} bgColor="#eef0ff" fgColor="#11142d" level="M" includeMargin /></div><div className="order-link"><span>{inviteUrl}</span><button onClick={copyInvite} aria-label="Copy room link">{copied ? <Check size={16} /> : <Copy size={16} />}</button></div></aside>}
-      </div>
-      {showInvite && <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowInvite(false)}><section className="invite-card" role="dialog" aria-modal="true" aria-labelledby="invite-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowInvite(false)} aria-label="Close invite dialog"><X size={18} /></button><p className="eyebrow"><Sparkles size={14} /> ROOM READY</p><h2 id="invite-title">Invite, then press play</h2><p className="invite-description">Share the QR or room link, then choose the first YouTube video for this {mode === "watch" ? "watch-together" : "host-order"} room.</p><div className="qr-wrap"><QRCodeSVG value={inviteUrl} size={150} bgColor="#eef0ff" fgColor="#11142d" level="M" includeMargin /></div><div className="invite-link"><span>{inviteUrl}</span><button onClick={copyInvite}>{copied ? <Check size={17} /> : <Copy size={17} />}{copied ? "Copied" : "Copy"}</button></div><div className="invite-code">Room code <strong>{roomCode}</strong></div><form className="launch-video" onSubmit={launchVideo}><label htmlFor="launch-youtube">First YouTube link</label><div><input id="launch-youtube" value={launchUrl} onChange={(event) => setLaunchUrl(event.target.value)} placeholder="Paste a YouTube link" /><button type="submit" disabled={!getYouTubeId(launchUrl)}>Start room <Play fill="currentColor" size={14} /></button></div></form><button className="choose-later" onClick={() => setShowInvite(false)}>Choose a video later</button></section></div>}
-      {showNameEditor && <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowNameEditor(false)}><form className="name-card" role="dialog" aria-modal="true" aria-labelledby="name-title" onMouseDown={(event) => event.stopPropagation()} onSubmit={saveListenerName}><button className="modal-close" type="button" onClick={() => setShowNameEditor(false)} aria-label="Close name dialog"><X size={18} /></button><p className="eyebrow"><Users size={14} /> LISTENER NAME</p><h2 id="name-title">What should we call you?</h2><label htmlFor="listener-name">Your name</label><input id="listener-name" value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} maxLength={32} placeholder="e.g. Ptsuriya" autoFocus /><button className="save-name" type="submit" disabled={!nameDraft.trim()}>Save name</button></form></div>}
-      {fullscreen && <div className="fullscreen-note">Press Esc to exit fullscreen</div>}
-    </main>
+    <div ref={shellRef} className={`room-shell mode-${state.mode}${tvScreen ? " is-tv" : ""}`}>
+      <RoomHeader
+        model={model}
+        onHome={returnHome}
+        onInvite={() => setDialog("invite")}
+        onRename={() => setDialog("name")}
+        onModeChange={changeMode}
+        onFullscreen={tvScreen ? toggleFullscreen : undefined}
+      />
+      {hostAway && <p className="banner banner-top" role="status">โฮสต์ออกจากห้องไปแล้ว รอโฮสต์กลับมา คิวยังอยู่ครบ</p>}
+      <main className="room-main">{view}</main>
+      {!tvScreen && <ToastStack toasts={toasts} placement={isHost ? "corner" : "bottom"} />}
+      {dialog === "invite" && <InviteDialog model={model} onClose={() => setDialog(null)} />}
+      {dialog === "name" && <NameDialog name={listenerName} onSave={saveName} onClose={() => setDialog(null)} />}
+      {dialog === "notes" && (
+        <NotesDialog notes={state.notes} editable={isHost} dispatch={dispatch} onClose={() => setDialog(null)} />
+      )}
+    </div>
   );
 }
