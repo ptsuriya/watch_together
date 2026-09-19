@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  type QueueItem, type RoomEvent, type RoomMode, useRoomRealtime,
+  type QueueItem, type RoomEvent, type RoomMember, type RoomMode, type RoomSelf, useRoomRealtime,
 } from "../lib/room-realtime";
 
 function makeRoomCode() {
@@ -74,6 +74,8 @@ export default function RoomClient({
     [supabaseKey, supabaseUrl],
   );
 
+  const hasRoomState = queue.length > 0 || activeVideoId !== null;
+
   const controlPlayer = useCallback((action: "play" | "pause" | "seek", seconds?: number) => {
     const command = action === "play" ? "playVideo" : action === "pause" ? "pauseVideo" : "seekTo";
     playerRef.current?.contentWindow?.postMessage(
@@ -110,18 +112,42 @@ export default function RoomClient({
       controlPlayer(event.action, event.seconds);
       return;
     }
-    if (event.kind === "state:request" && isHostRef.current) {
-      broadcastRef.current({ kind: "state:sync", queue, mode, isPlaying, activeVideoId });
+    if (event.kind === "state:request") {
+      // The host always answers. A guest answers only a host that lost its queue, e.g. after a reload.
+      if (isHostRef.current || (event.fromHost && hasRoomState)) {
+        broadcastRef.current({ kind: "state:sync", queue, mode, isPlaying, activeVideoId });
+      }
       return;
     }
     if (event.kind === "state:sync") {
+      const incomingEmpty = event.queue.length === 0 && event.activeVideoId === null;
+      if (isHostRef.current) {
+        // The host keeps its own mode and adopts a queue only to recover one it lost.
+        if (hasRoomState || incomingEmpty) return;
+      } else {
+        setMode(event.mode);
+        // Keep the queue rather than take an empty one from a host that just reloaded.
+        if (incomingEmpty && hasRoomState) return;
+      }
       setQueue(event.queue);
-      setMode(event.mode);
       setIsPlaying(event.isPlaying);
       setActiveVideoId(event.activeVideoId);
       controlPlayer(event.isPlaying ? "play" : "pause");
     }
-  }, [activeVideoId, controlPlayer, isPlaying, mode, queue]);
+  }, [activeVideoId, controlPlayer, hasRoomState, isPlaying, mode, queue]);
+
+  const handleResync = useCallback(({ isHost: selfIsHost }: RoomSelf) => {
+    if (!selfIsHost) broadcastRef.current({ kind: "state:request" });
+    else if (!hasRoomState) broadcastRef.current({ kind: "state:request", fromHost: true });
+  }, [hasRoomState]);
+
+  const handleMemberJoin = useCallback((member: RoomMember, { isHost: selfIsHost }: RoomSelf) => {
+    if (selfIsHost && !member.isHost) {
+      broadcastRef.current({ kind: "state:sync", queue, mode, isPlaying, activeVideoId });
+    } else if (!selfIsHost && member.isHost) {
+      broadcastRef.current({ kind: "state:request" });
+    }
+  }, [activeVideoId, isPlaying, mode, queue]);
 
   const { status, members, isHost, broadcast, realtimeConfigured } = useRoomRealtime({
     enabled: screen === "room",
@@ -129,6 +155,8 @@ export default function RoomClient({
     requestedHost,
     listenerName,
     onEvent: handleRoomEvent,
+    onResync: handleResync,
+    onMemberJoin: handleMemberJoin,
     supabase: supabaseConfig,
   });
 
@@ -172,7 +200,8 @@ export default function RoomClient({
   function createRoom() {
     if (!selectedMode) return;
     const code = makeRoomCode();
-    window.history.replaceState({}, "", `/?room=${code}&host=1`);
+    // The mode stays in the host URL so a reload restores it.
+    window.history.replaceState({}, "", `/?room=${code}&host=1&mode=${selectedMode}`);
     setRoomCode(code);
     setRequestedHost(true);
     setMode(selectedMode);
@@ -235,6 +264,7 @@ export default function RoomClient({
       return;
     }
     setMode(nextMode);
+    if (requestedHost) window.history.replaceState({}, "", `/?room=${roomCode}&host=1&mode=${nextMode}`);
     if (realtimeConfigured) broadcast({ kind: "mode:set", mode: nextMode });
   }
 
