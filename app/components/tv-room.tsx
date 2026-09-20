@@ -113,14 +113,17 @@ export function TvRoom({
         </section>
 
         {karaoke && (
-          <section className="card side-key" aria-label="คีย์และอีโมจิ">
+          <section className="card side-key" aria-label="คีย์">
             <KeyControl value={state.key} dispatch={dispatch} />
             <KeyControlSelect value={state.keyControl} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
-            <EmojiPad onSend={onReact} compact />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </section>
         )}
+
+        <section className="card side-emoji" aria-label="อีโมจิ">
+          <EmojiPad onSend={onReact} compact />
+        </section>
       </aside>
     </div>
   );

@@ -190,8 +190,15 @@ export function sanitizeChat(text: unknown) {
   return typeof text === "string" ? text.replace(/\s+/g, " ").trim().slice(0, MAX_CHAT) : "";
 }
 
-export function isReaction(value: unknown): value is (typeof REACTIONS)[number] {
-  return REACTIONS.some((reaction) => reaction === value);
+/** One emoji character (with its optional skin tone, variation selector or joined parts). */
+const SINGLE_EMOJI = /^\p{Extended_Pictographic}(\u200d\p{Extended_Pictographic}|[\uFE0F\u20E3]|\p{Emoji_Modifier})*$/u;
+
+/** Everyone may bring one emoji of their own, so anything that is a single emoji is allowed through. */
+export function sanitizeReaction(value: unknown) {
+  if (typeof value !== "string") return null;
+  const emoji = value.trim();
+  if (!emoji || emoji.length > 12) return null;
+  return SINGLE_EMOJI.test(emoji) ? emoji : null;
 }
 
 // Everything below reads payloads from other room members, which any member can forge. Keep only well-formed fields.

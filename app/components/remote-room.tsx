@@ -63,12 +63,10 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
         </section>
       )}
 
-      {karaoke && (
-        <section className="card remote-emoji" aria-labelledby="remote-emoji-title">
-          <h2 id="remote-emoji-title">ส่งอีโมจิขึ้นจอ</h2>
-          <EmojiPad onSend={onReact} />
-        </section>
-      )}
+      <section className="card remote-emoji" aria-labelledby="remote-emoji-title">
+        <h2 id="remote-emoji-title">ส่งอีโมจิขึ้นจอ</h2>
+        <EmojiPad onSend={onReact} />
+      </section>
 
       <section className="card remote-add" aria-labelledby="remote-add-title">
         <h2 id="remote-add-title">{karaoke ? "ขอเพลง" : "เพิ่มเพลงเข้าคิว"}</h2>

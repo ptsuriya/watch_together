@@ -3,6 +3,7 @@
 import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
 import { ChatBar, ChatFlights, type ChatMessage } from "./chat";
+import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel } from "./room-panels";
 import type { RoomModel } from "./room-model";
@@ -13,16 +14,20 @@ export function WatchRoom({
   model,
   player,
   messages,
+  bursts,
   onExpandNotes,
   onInvite,
   onChat,
+  onReact,
 }: {
   model: RoomModel;
   player: ReactNode;
   messages: ChatMessage[];
+  bursts: EmojiBurst[];
   onExpandNotes: () => void;
   onInvite: () => void;
   onChat: (text: string) => void;
+  onReact: (emoji: string) => void;
 }) {
   const { state, isHost, dispatch, members, selfId, selfName } = model;
   const memberCount = members.length || 1;
@@ -31,7 +36,6 @@ export function WatchRoom({
     <div className="watch-grid">
       <section className="card player-card" aria-label="วิดีโอ">
         <div className="player-slot">
-          {state.chat && <ChatFlights messages={messages} />}
           {state.nowPlaying ? player : (
             <div className="player-empty">
               <Art name="board" className="player-empty-art" sizes="180px" priority />
@@ -48,7 +52,15 @@ export function WatchRoom({
           </div>
           <PlaybackButtons state={state} dispatch={dispatch} />
         </div>
-        {state.chat && <ChatBar onSend={onChat} compact />}
+        {/* Messages and emoji live under the video here, never on top of it: every screen in this mode is small. */}
+        <div className="room-ticker">
+          {state.chat && <ChatFlights messages={messages} />}
+          <EmojiRain bursts={bursts} variant="strip" />
+        </div>
+        <div className="watch-social">
+          {state.chat && <ChatBar onSend={onChat} compact />}
+          <EmojiPad onSend={onReact} compact />
+        </div>
       </section>
 
       <NotesPanel notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onExpand={onExpandNotes} />

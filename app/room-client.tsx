@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  createRoomState, hasContent, isReaction, mayChangeKey, reduceRoom, sanitizeChat, sanitizeGuestIntent, sanitizeState,
+  createRoomState, hasContent, mayChangeKey, reduceRoom, sanitizeChat, sanitizeGuestIntent, sanitizeReaction, sanitizeState,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -185,8 +185,9 @@ export default function RoomClient({
     if (realtimeConfigured) broadcastRef.current({ kind: "chat", text, from });
   }, [pushMessage, pushToast, realtimeConfigured]);
 
-  const sendReaction = useCallback((emoji: string) => {
-    if (!isReaction(emoji)) return;
+  const sendReaction = useCallback((input: string) => {
+    const emoji = sanitizeReaction(input);
+    if (!emoji) return;
     const from = selfNameRef.current;
     pushBurst(emoji, from);
     if (realtimeConfigured) broadcastRef.current({ kind: "react", emoji, from });
@@ -247,7 +248,8 @@ export default function RoomClient({
         return;
       }
       case "react": {
-        if (isReaction(event.emoji)) pushBurst(event.emoji, typeof event.from === "string" ? event.from.slice(0, 32) : "ใครบางคน");
+        const emoji = sanitizeReaction(event.emoji);
+        if (emoji) pushBurst(emoji, sanitizeChat(event.from).slice(0, 32) || "ใครบางคน");
         return;
       }
       case "chat": {
@@ -514,9 +516,11 @@ export default function RoomClient({
         model={model}
         player={player}
         messages={messages}
+        bursts={bursts}
         onExpandNotes={() => setDialog("notes")}
         onInvite={() => setDialog("invite")}
         onChat={sendChat}
+        onReact={sendReaction}
       />
     );
   } else if (isHost) {

@@ -641,6 +641,8 @@ select.field { padding-right: 8px; }
 /* ---------- Emoji bomb ---------- */
 
 .emoji-rain { position: absolute; inset: 0; z-index: 5; overflow: hidden; pointer-events: none; }
+.emoji-rain-stage { --emoji-rise: -78vh; }
+.emoji-rain-strip { --emoji-rise: -90px; }
 .emoji-particle {
   position: absolute; bottom: -8%; line-height: 1;
   animation-name: emoji-fly; animation-timing-function: ease-out; animation-fill-mode: forwards;
@@ -666,7 +668,18 @@ select.field { padding-right: 8px; }
 
 .chat-bar { display: flex; gap: 8px; }
 .chat-bar .field { flex: 1; min-width: 0; }
-.chat-bar-compact { padding: 0 18px 16px; }
+.chat-bar-compact { flex: 1 1 260px; }
+/* Under the video in watch mode: messages fly and emoji rise here, never over anyone's picture. */
+.room-ticker {
+  position: relative; height: 68px; overflow: hidden;
+  border-top: 2px solid rgba(42, 16, 16, 0.12); background: var(--cream);
+  container-type: inline-size;
+}
+.room-ticker .chat-flight { font-size: 16px; padding: 4px 12px; }
+.room-ticker .chat-flight { top: 14px !important; }
+.watch-social { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 18px 16px; }
+.watch-social .emoji-pad { flex: 1 1 240px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.side-emoji { padding: 12px; }
 .chat-log { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; max-height: 168px; overflow-y: auto; }
 .chat-log li { padding: 8px 12px; border-radius: 14px; background: var(--cream); color: var(--cocoa); font-size: 14px; }
 .chat-log b { color: var(--amber-deep); }
@@ -686,6 +699,11 @@ select.field { padding-right: 8px; }
 }
 .emoji-button:hover { background: var(--gold); }
 .emoji-button:active { transform: translate(3px, 3px) scale(0.96); box-shadow: none; }
+.emoji-button.is-custom { background: var(--gold); }
+.emoji-add { background: var(--sand); color: var(--bark); }
+.emoji-pad-picker { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.emoji-pad-picker .emoji-button { font-size: 24px; border-radius: 12px; }
+.emoji-input { text-align: center; font-size: 22px; }
 .emoji-pad-compact { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .emoji-pad-compact .emoji-button { border-radius: 14px; font-size: 24px; }
 
@@ -857,7 +875,7 @@ select.field { padding-right: 8px; }
 @keyframes emoji-fly {
   0% { opacity: 0; translate: 0 0; scale: 0.6; }
   12% { opacity: 1; scale: 1; }
-  100% { opacity: 0; translate: var(--drift, 0) -78vh; rotate: var(--spin, 0deg); }
+  100% { opacity: 0; translate: var(--drift, 0) var(--emoji-rise, -78vh); rotate: var(--spin, 0deg); }
 }
 @keyframes emoji-name {
   0% { opacity: 0; translate: -50% 12px; }

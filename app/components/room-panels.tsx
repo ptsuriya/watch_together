@@ -314,7 +314,7 @@ export function KeyControl({ value, dispatch, large = false }: {
     <div className={`key-control${large ? " key-control-lg" : ""}`}>
 
       <div className="key-row">
-        <button type="button" className="btn btn-secondary key-btn" onClick={() => dispatch({ kind: "key", step: -1 })} disabled={value <= -KEY_RANGE} aria-label="ลดคีย์ครึ่งเสียง">
+        <button type="button" className="btn btn-secondary key-btn" onClick={() => dispatch({ kind: "key", step: -0.5 })} disabled={value <= -KEY_RANGE} aria-label="ลดคีย์ 0.5">
           <Minus size={large ? 28 : 20} aria-hidden="true" />
           {large && <span>ลดคีย์</span>}
         </button>
@@ -322,15 +322,15 @@ export function KeyControl({ value, dispatch, large = false }: {
           <small>คีย์</small>
           <strong>{formatKey(value)}</strong>
         </p>
-        <button type="button" className="btn btn-secondary key-btn" onClick={() => dispatch({ kind: "key", step: 1 })} disabled={value >= KEY_RANGE} aria-label="เพิ่มคีย์ครึ่งเสียง">
+        <button type="button" className="btn btn-secondary key-btn" onClick={() => dispatch({ kind: "key", step: 0.5 })} disabled={value >= KEY_RANGE} aria-label="เพิ่มคีย์ 0.5">
           <Plus size={large ? 28 : 20} aria-hidden="true" />
           {large && <span>เพิ่มคีย์</span>}
         </button>
       </div>
       <div className="key-fine">
-        <button type="button" onClick={() => dispatch({ kind: "key", step: -0.5 })} disabled={value <= -KEY_RANGE}>−0.5</button>
-        <span>ครึ่งขั้น</span>
-        <button type="button" onClick={() => dispatch({ kind: "key", step: 0.5 })} disabled={value >= KEY_RANGE}>+0.5</button>
+        <button type="button" onClick={() => dispatch({ kind: "key", step: -1 })} disabled={value <= -KEY_RANGE}>−1</button>
+        <span>ทีละเต็มขั้น</span>
+        <button type="button" onClick={() => dispatch({ kind: "key", step: 1 })} disabled={value >= KEY_RANGE}>+1</button>
       </div>
       <button type="button" className="key-reset" onClick={() => dispatch({ kind: "key", step: 0 })} disabled={value === 0}>
         <RotateCcw size={15} aria-hidden="true" /> กลับคีย์ต้นฉบับ
