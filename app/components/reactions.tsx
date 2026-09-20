@@ -14,8 +14,9 @@ export function makeBurst(id: number, emoji: string, from: string): EmojiBurst {
     x: 4 + Math.random() * 92,
     delay: Math.random() * 0.5,
     duration: 2.4 + Math.random() * 1.2,
-    size: 28 + Math.random() * 34,
-    drift: Math.round((Math.random() - 0.5) * 160),
+    // Sized against the screen, so a burst reads from across the room on a TV.
+    size: 5 + Math.random() * 4,
+    drift: Math.round((Math.random() - 0.5) * 220),
     spin: Math.round((Math.random() - 0.5) * 60),
   }));
   return { id, emoji, from, particles };
@@ -34,7 +35,7 @@ export function EmojiRain({ bursts }: { bursts: EmojiBurst[] }) {
               className="emoji-particle"
               style={{
                 left: `${particle.x}%`,
-                fontSize: `${particle.size}px`,
+                fontSize: `${particle.size}vmin`,
                 animationDelay: `${particle.delay}s`,
                 animationDuration: `${particle.duration}s`,
                 "--drift": `${particle.drift}px`,

@@ -648,8 +648,8 @@ select.field { padding-right: 8px; }
 }
 .emoji-from {
   position: absolute; left: 50%; bottom: 18px; translate: -50% 0;
-  padding: 6px 16px; border: 2px solid var(--bark); border-radius: 999px;
-  background: var(--cream); color: var(--bark); font-weight: 700; white-space: nowrap;
+  padding: 8px 22px; border: 2px solid var(--bark); border-radius: 999px;
+  background: var(--cream); color: var(--bark); font-size: clamp(16px, 2vw, 24px); font-weight: 700; white-space: nowrap;
   box-shadow: var(--shadow);
   animation: emoji-name 2.6s ease forwards;
 }
@@ -681,13 +681,13 @@ select.field { padding-right: 8px; }
 .emoji-button {
   display: grid; place-items: center; aspect-ratio: 1; padding: 0;
   border: 2px solid var(--bark); border-radius: 18px; background: var(--honey);
-  font-size: 30px; line-height: 1; box-shadow: var(--shadow-sm);
+  font-size: 34px; line-height: 1; box-shadow: var(--shadow-sm);
   transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
 }
 .emoji-button:hover { background: var(--gold); }
 .emoji-button:active { transform: translate(3px, 3px) scale(0.96); box-shadow: none; }
 .emoji-pad-compact { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
-.emoji-pad-compact .emoji-button { border-radius: 14px; font-size: 20px; }
+.emoji-pad-compact .emoji-button { border-radius: 14px; font-size: 24px; }
 
 /* ---------- Karaoke key ---------- */
 
