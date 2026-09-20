@@ -15,6 +15,7 @@ import { HomeScreen } from "./components/home-screen";
 import { ChatFlights, CHAT_FLIGHT_MS, CHAT_LANES, CHAT_LOG_SIZE, type ChatMessage, pickFlightTop } from "./components/chat";
 import { KaraokeSetupDialog } from "./components/key-helper";
 import { PartyDialog } from "./components/party";
+import { useSyncOffset } from "./components/sync-offset";
 import { BURST_LIFETIME_MS, type EmojiBurst, EmojiRain, makeBurst } from "./components/reactions";
 import { RemoteRoom, WaitingRoom } from "./components/remote-room";
 import type { AddVideoResult, RoomModel, Toast } from "./components/room-model";
@@ -411,6 +412,7 @@ export default function RoomClient({
   });
 
   const keyHelperStatus = useKeyHelperStatus(isHost && state.mode === "karaoke");
+  const { offset: syncOffset, change: changeSyncOffset } = useSyncOffset();
   const selfName = listenerName || (isHost ? "โฮสต์" : selfId ? `ผู้ฟัง ${selfId.slice(0, 4).toUpperCase()}` : "ผู้ฟัง");
   const hostOnline = members.some((member) => member.isHost);
 
@@ -619,6 +621,7 @@ export default function RoomClient({
       semitones={isHost && state.mode === "karaoke" ? state.key : undefined}
       onNearEnd={isHost ? handleNearEnd : undefined}
       follow={isHost ? undefined : follow}
+      offset={isHost ? 0 : syncOffset}
       resume={isHost ? resume : undefined}
       timeRef={isHost ? timeRef : undefined}
       onPlayingChange={isHost ? handlePlayerPlaying : undefined}
@@ -638,6 +641,8 @@ export default function RoomClient({
         onExpandNotes={() => setDialog("notes")}
         onInvite={() => setDialog("invite")}
         onOpenParty={() => setDialog("party")}
+        syncOffset={syncOffset}
+        onSyncOffset={changeSyncOffset}
         onChat={sendChat}
         onReact={sendReaction}
       />

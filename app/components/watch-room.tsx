@@ -4,6 +4,7 @@ import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
 import { ChatBar, type ChatMessage } from "./chat";
 import { PartyButton, ScorePad, SpotlightBanner } from "./party";
+import { SyncOffsetControl } from "./sync-offset";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel, NotesToggle } from "./room-panels";
@@ -20,6 +21,8 @@ export function WatchRoom({
   onChat,
   onReact,
   onOpenParty,
+  syncOffset,
+  onSyncOffset,
 }: {
   model: RoomModel;
   player: ReactNode;
@@ -29,6 +32,9 @@ export function WatchRoom({
   onChat: (text: string) => void;
   onReact: (emoji: string) => void;
   onOpenParty: () => void;
+  /** Guests only: how far ahead of the host this device plays. */
+  syncOffset: number;
+  onSyncOffset: (value: number) => void;
 }) {
   const { state, isHost, canManage, dispatch, members, selfId, selfName } = model;
   const memberCount = members.length || 1;
@@ -56,6 +62,7 @@ export function WatchRoom({
         {state.spotlight && (
           <SpotlightBanner spotlight={state.spotlight} mine={state.spotlight.memberId === selfId} place="phone" />
         )}
+        {!isHost && state.nowPlaying && <SyncOffsetControl offset={syncOffset} onChange={onSyncOffset} />}
         <div className="watch-social">
           {state.chat && <ChatBar onSend={onChat} compact />}
           <EmojiPad onSend={onReact} compact />

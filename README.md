@@ -47,6 +47,10 @@ People usually scan the QR on the host screen with their phone camera. The home 
 
 The host can hand the run of the room to anyone in it: open the people dialog (the QR button) and press the shield next to a name. A co-host gets the queue controls and the room's settings — crossfade, notes, messages, who may change the key — everywhere they are, including their phone. Only the host hands this out or takes it back, and the host still decides it: every request goes through the host's page, which checks who asked before applying it.
 
+## Watching along with a shared screen
+
+If the room is on a call — someone shares their screen in Discord, Meet or Zoom — the stream reaches everyone a little late, and how late differs per person. In watch mode a guest gets **ชดเชยดีเลย์จอแชร์** under the player: a slider (and ±0.1 s buttons) that runs their own player up to 5 seconds ahead of, or behind, the host. The value is kept on that device only and never enters the room state, because it describes that person's connection, not the room. Moving it seeks straight away; after that the player follows the host as usual, so the offset holds without fighting the heartbeat.
+
 ## Party games
 
 **เกม & คิว** next to the queue holds the rules of the night, and only the host or a co-host may set them.

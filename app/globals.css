@@ -900,6 +900,18 @@ select.field { padding-right: 8px; }
   100% { opacity: 0; scale: 0.96; }
 }
 
+/* ---- Lining up with a shared screen ---- */
+
+.sync-offset {
+  display: grid; gap: 6px; padding: 10px 12px;
+  border: 2px dashed var(--line); border-radius: 16px; background: rgba(255, 240, 204, 0.4);
+}
+.sync-offset label { display: flex; align-items: center; gap: 6px; color: var(--bark); font-size: 14px; font-weight: 700; }
+.sync-offset label strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.sync-offset small { color: var(--clay); font-size: 12px; }
+.sync-offset-row { display: flex; align-items: center; gap: 8px; }
+.sync-offset-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--amber); }
+
 /* ---- Party games: the mic bomb, votes and scores ---- */
 
 .chip-btn {

@@ -17,6 +17,8 @@ const AUTOPLAY_CHECK_MS = 2500;
 const SKIP_FADE_S = 1.5;
 const FADE_STEP_MS = 100;
 const NEAR_END_CHECK_MS = 500;
+/** Nudging the offset moves the video once the person stops, not on every step of the slider. */
+const OFFSET_SETTLE_MS = 220;
 
 type Deck = { player: Player | null; ready: boolean; itemId: string | null };
 type Fade = { timer: number | undefined; finish: (() => void) | null };
@@ -109,6 +111,7 @@ export function YouTubePlayer({
   hasNext = false,
   semitones,
   follow,
+  offset = 0,
   resume,
   timeRef,
   onPlayingChange,
@@ -130,6 +133,8 @@ export function YouTubePlayer({
   semitones?: number;
   /** Guests: keep the player within a second or two of the host. */
   follow?: PlaybackFollow;
+  /** Guests: seconds this device plays ahead of the host, to cancel the delay of a screen someone is sharing. */
+  offset?: number;
   /** Host: where to start the item when the player loads it. */
   resume?: PlaybackResume;
   /** Receives a reader for the current playback position. */
@@ -151,7 +156,9 @@ export function YouTubePlayer({
   const nearEndItemRef = useRef<string | null>(null);
   /** The room's own volume. Read from the player between fades, never from the middle of one. */
   const baseVolumeRef = useRef(100);
-  const latest = useRef({ playing, follow, resume, semitones, onPlayingChange, onEnded, onError });
+  const latest = useRef({ playing, follow, offset, resume, semitones, onPlayingChange, onEnded, onError });
+  /** The offset this player has already moved to, so a fresh one can move it at once. */
+  const offsetRef = useRef(offset);
   const [active, setActive] = useState(0);
   const [readyCount, setReadyCount] = useState(0);
   const [fadeSeconds, setFadeSeconds] = useState(0);
@@ -162,7 +169,7 @@ export function YouTubePlayer({
   const sendsKey = semitones !== undefined;
 
   useEffect(() => {
-    latest.current = { playing, follow, resume, semitones, onPlayingChange, onEnded, onError };
+    latest.current = { playing, follow, offset, resume, semitones, onPlayingChange, onEnded, onError };
   });
 
   useEffect(() => {
@@ -220,7 +227,8 @@ export function YouTubePlayer({
     const { playing: wantPlaying, follow: followNow, resume: resumeNow } = latest.current;
     const resumeAt = resumeNow?.itemId === item.id ? resumeNow : undefined;
     const from = followNow ?? resumeAt;
-    const startSeconds = from ? expectedPosition(from, wantPlaying) : 0;
+    // Only a guest following the host carries the offset; the host's own resume point is already right.
+    const startSeconds = from ? Math.max(0, expectedPosition(from, wantPlaying) + (followNow ? latest.current.offset : 0)) : 0;
     const video = { videoId: item.videoId, startSeconds };
     const outgoing = current.player;
 
@@ -311,9 +319,20 @@ export function YouTubePlayer({
   useEffect(() => {
     const deck = decksRef.current[activeRef.current];
     if (!deck.ready || !deck.player || !follow || deck.itemId !== item.id) return;
-    const expected = expectedPosition(follow, playing);
-    if (Math.abs(deck.player.getCurrentTime() - expected) > FOLLOW_TOLERANCE_S) deck.player.seekTo(expected, true);
-  }, [active, follow, item.id, playing, readyCount]);
+    const player = deck.player;
+    const target = () => {
+      const now = latest.current.follow ?? follow;
+      return Math.max(0, expectedPosition(now, latest.current.playing) + latest.current.offset);
+    };
+    if (offsetRef.current !== offset) {
+      const timeoutId = window.setTimeout(() => {
+        offsetRef.current = offset;
+        player.seekTo(target(), true);
+      }, OFFSET_SETTLE_MS);
+      return () => window.clearTimeout(timeoutId);
+    }
+    if (Math.abs(player.getCurrentTime() - target()) > FOLLOW_TOLERANCE_S) player.seekTo(target(), true);
+  }, [active, follow, item.id, offset, playing, readyCount]);
 
   // Host: start the next song while this one is still ending.
   useEffect(() => {
