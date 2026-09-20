@@ -3,7 +3,7 @@
 import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
-import { MemberList, NotesPanel } from "./room-panels";
+import { CrossfadeSelect, MemberList, NotesPanel } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art } from "./ui";
 
@@ -44,7 +44,7 @@ export function WatchRoom({
         </div>
       </section>
 
-      <NotesPanel notes={state.notes} editable={isHost} dispatch={dispatch} onExpand={onExpandNotes} />
+      <NotesPanel notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onExpand={onExpandNotes} />
 
       <section className="card members-card" aria-labelledby="members-title">
         <Art name="hello" className="card-bear" sizes="96px" />
@@ -60,6 +60,7 @@ export function WatchRoom({
       <section className="card queue-card" aria-labelledby="queue-title">
         <div className="card-head">
           <h2 id="queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
+          {isHost && <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />}
         </div>
         <AddVideoForm onAdd={model.addVideo} />
         <QueueList items={state.queue} selfName={selfName} isHost={isHost} dispatch={dispatch} emptyText="ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย" />

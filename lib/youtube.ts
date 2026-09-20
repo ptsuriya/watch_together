@@ -57,6 +57,9 @@ export type YouTubePlayer = {
   getCurrentTime(): number;
   getDuration(): number;
   getPlayerState(): number;
+  getVolume(): number;
+  setVolume(volume: number): void;
+  getIframe(): HTMLIFrameElement;
   unMute(): void;
   destroy(): void;
 };

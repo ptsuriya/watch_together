@@ -358,7 +358,8 @@ select.field { padding-right: 8px; }
 
 /* ---------- Room shell ---------- */
 
-.room-shell { display: flex; flex-direction: column; min-height: 100dvh; background: var(--cream); }
+/* Positioned, so absolutely positioned descendants (e.g. .sr-only labels) stay inside instead of stretching the page. */
+.room-shell { position: relative; display: flex; flex-direction: column; min-height: 100dvh; background: var(--cream); }
 .room-shell:fullscreen { overflow: auto; }
 
 .room-header {
@@ -417,6 +418,11 @@ select.field { padding-right: 8px; }
 
 .yt-frame { position: absolute; inset: 0; background: var(--bark); }
 .yt-mount, .yt-mount > div, .yt-mount iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+/* Two decks share the frame: the one in front is the song you hear, the other is fading out or waiting. */
+.yt-mount { opacity: 0; transition: opacity var(--deck-fade, 0s) linear; }
+.yt-mount.is-active { opacity: 1; }
+.yt-mount:not(.is-active) { pointer-events: none; }
+.yt-mount[hidden] { display: none; }
 .yt-shield { position: absolute; inset: 0; z-index: 1; }
 .yt-overlay {
   position: absolute; inset: 0; z-index: 2;
@@ -475,6 +481,13 @@ select.field { padding-right: 8px; }
   color: var(--bark); font-size: 17px; line-height: 1.8; white-space: pre-wrap;
 }
 .notes-meta { color: var(--clay); font-size: 13px; }
+.notes-tools { display: flex; align-items: center; gap: 8px; }
+.notes-tools .icon-btn { width: 38px; height: 38px; }
+.notes-toggle { justify-self: start; cursor: pointer; transition: background-color 0.15s ease; }
+.notes-toggle.is-on { background: var(--gold); font-weight: 600; }
+
+.crossfade-select { display: inline-flex; align-items: center; gap: 6px; color: var(--clay); font-size: 13px; font-weight: 600; }
+.crossfade-select .field { width: auto; min-height: 36px; padding: 0 6px; border-radius: 10px; font-size: 14px; }
 @media (min-width: 1024px) {
   .notes-card .notes-input, .notes-card .notes-text { flex: 1; height: auto; min-height: 0; max-height: none; }
 }
@@ -482,7 +495,7 @@ select.field { padding-right: 8px; }
 .members-card, .queue-card { display: flex; flex-direction: column; gap: 14px; padding: 18px; }
 /* The waving bear sits in the space under the member list. */
 .card-bear { order: 99; align-self: flex-end; width: 88px; height: auto; margin-top: auto; }
-.queue-card .queue-list { max-height: 520px; overflow-y: auto; }
+.queue-card .queue-list { position: relative; max-height: 520px; overflow-y: auto; overscroll-behavior: contain; }
 
 .member-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .member-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; background: var(--cream); }
@@ -566,7 +579,8 @@ select.field { padding-right: 8px; }
 .qr-frame svg { display: block; width: 100%; height: auto; }
 
 .tv-side {
-  display: flex; flex-direction: column; gap: 16px; min-height: 0; padding: 16px 16px 24px; overflow-y: auto;
+  position: relative; display: flex; flex-direction: column; gap: 16px; min-height: 0; padding: 16px 16px 24px;
+  overflow-y: auto; overscroll-behavior: contain;
   border-left: 2px solid var(--bark); background: var(--cream);
 }
 @media (max-width: 899px) { .tv-side { border-top: 2px solid var(--bark); border-left: 0; } }
@@ -612,6 +626,33 @@ select.field { padding-right: 8px; }
   animation: key-pop 1.6s ease forwards;
 }
 
+/* ---------- Emoji bomb ---------- */
+
+.emoji-rain { position: absolute; inset: 0; z-index: 5; overflow: hidden; pointer-events: none; }
+.emoji-particle {
+  position: absolute; bottom: -8%; line-height: 1;
+  animation-name: emoji-fly; animation-timing-function: ease-out; animation-fill-mode: forwards;
+  filter: drop-shadow(2px 2px 0 rgba(42, 16, 16, 0.25));
+}
+.emoji-from {
+  position: absolute; left: 50%; bottom: 18px; translate: -50% 0;
+  padding: 6px 16px; border: 2px solid var(--bark); border-radius: 999px;
+  background: var(--cream); color: var(--bark); font-weight: 700; white-space: nowrap;
+  box-shadow: var(--shadow);
+  animation: emoji-name 2.6s ease forwards;
+}
+.emoji-pad { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.emoji-button {
+  display: grid; place-items: center; aspect-ratio: 1; padding: 0;
+  border: 2px solid var(--bark); border-radius: 18px; background: var(--honey);
+  font-size: 30px; line-height: 1; box-shadow: var(--shadow-sm);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+.emoji-button:hover { background: var(--gold); }
+.emoji-button:active { transform: translate(3px, 3px) scale(0.96); box-shadow: none; }
+.emoji-pad-compact { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.emoji-pad-compact .emoji-button { border-radius: 14px; font-size: 20px; }
+
 /* ---------- Karaoke key ---------- */
 
 .key-control { display: grid; justify-items: center; gap: 10px; }
@@ -628,6 +669,19 @@ select.field { padding-right: 8px; }
   font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
 }
 .key-reset:disabled { opacity: 0.4; text-decoration: none; }
+
+.helper-note { display: flex; align-items: center; gap: 8px; color: var(--clay); font-size: 14px; line-height: 1.6; }
+.helper-note.is-ok { color: var(--leaf-deep); font-weight: 600; }
+.helper-note.is-error { color: var(--terra-deep); }
+.helper-install { display: grid; gap: 10px; padding-top: 12px; border-top: 2px dashed var(--line); }
+.helper-install strong { color: var(--bark); font-size: 15px; }
+.helper-install p { color: var(--clay); font-size: 14px; line-height: 1.6; }
+.helper-steps { display: grid; gap: 8px; margin: 0; padding-left: 20px; color: var(--cocoa); font-size: 14px; line-height: 1.7; }
+.helper-steps code {
+  padding: 1px 6px; border-radius: 6px; background: var(--honey); color: var(--bark); font-size: 13px;
+}
+.helper-steps .text-btn { margin: 0 6px; }
+.key-probe { position: absolute; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none; }
 
 .bridge { padding-top: 12px; border-top: 2px dashed var(--line); }
 .bridge summary {
@@ -669,7 +723,8 @@ select.field { padding-right: 8px; }
 .remote-key { display: grid; gap: 12px; padding: 18px; background: var(--gold); }
 .remote-key h2 { justify-content: center; }
 .remote-key .key-reset { color: var(--bark); }
-.remote-add, .remote-queue { display: grid; gap: 14px; padding: 18px; }
+.remote-add, .remote-queue, .remote-emoji { display: grid; gap: 14px; padding: 18px; }
+.remote-emoji h2 { justify-content: center; }
 .remote-add .add-form + .add-form { padding-top: 12px; border-top: 2px dashed var(--line); }
 .remote-add .add-row .field { flex-basis: 100%; }
 .remote-add .add-row .btn:not(.btn-icon) { flex: 1; }
@@ -739,6 +794,17 @@ select.field { padding-right: 8px; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 @keyframes float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -8px; } }
 @keyframes toast-in { from { opacity: 0; translate: 0 8px; } }
+@keyframes emoji-fly {
+  0% { opacity: 0; translate: 0 0; scale: 0.6; }
+  12% { opacity: 1; scale: 1; }
+  100% { opacity: 0; translate: var(--drift, 0) -78vh; rotate: var(--spin, 0deg); }
+}
+@keyframes emoji-name {
+  0% { opacity: 0; translate: -50% 12px; }
+  12% { opacity: 1; translate: -50% 0; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
 @keyframes key-pop {
   0% { opacity: 0; scale: 0.6; }
   15% { opacity: 1; scale: 1.06; }

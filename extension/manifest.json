@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "KUMA Karaoke Key",
+  "short_name": "KUMA Key",
+  "version": "1.0.0",
+  "description": "Lets KUMA Listening Party change the karaoke key of the YouTube video playing on the host screen.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube-nocookie.com/embed/*"],
+      "js": ["vendor/signalsmith-stretch.js", "content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["vendor/signalsmith-stretch.js"],
+      "matches": ["https://www.youtube-nocookie.com/*"]
+    }
+  ]
+}

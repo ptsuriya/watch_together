@@ -3,11 +3,13 @@
 import { QRCodeSVG } from "qrcode.react";
 import {
   AArrowDown, AArrowUp, Check, Copy, Crown, Maximize, Maximize2, Mic, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
-  UserRound,
+  UserRound, UsersRound,
 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
-import { formatKey, KEY_RANGE, MAX_NOTES, type RoomIntent, type RoomMode } from "../../lib/room-state";
+import {
+  CROSSFADE_OPTIONS, formatKey, KEY_RANGE, MAX_NOTES, type RoomIntent, type RoomMode,
+} from "../../lib/room-state";
 import { MODE_LABELS, type RoomModel } from "./room-model";
 import { Art, Avatar, Brand, Dialog, EmptyNote } from "./ui";
 
@@ -112,41 +114,128 @@ export function MemberList({ members, selfId, selfName, selfIsHost }: {
   );
 }
 
+const NOTE_SIZES = [17, 21, 26, 32, 40, 52];
+const NOTE_SIZE_KEY = "kuma-notes-size";
+/** Notes coming in while someone is typing would move their cursor, so they are adopted during a pause. */
+const TYPING_GRACE_MS = 1200;
+
+function useNoteSize() {
+  const [index, setIndex] = useState(1);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      try {
+        const saved = Number(window.localStorage.getItem(NOTE_SIZE_KEY));
+        if (Number.isInteger(saved) && saved >= 0 && saved < NOTE_SIZES.length) setIndex(saved);
+      } catch {
+        // The default size is fine.
+      }
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  const change = (step: number) => {
+    setIndex((current) => {
+      const next = Math.max(0, Math.min(NOTE_SIZES.length - 1, current + step));
+      try {
+        window.localStorage.setItem(NOTE_SIZE_KEY, String(next));
+      } catch {
+        // Remembering the size is a convenience only.
+      }
+      return next;
+    });
+  };
+  return { size: NOTE_SIZES[index], index, change };
+}
+
+function useNoteDraft(notes: string, dispatch: (intent: RoomIntent) => void) {
+  const [draft, setDraft] = useState(notes);
+  const typedAt = useRef(0);
+
+  useEffect(() => {
+    if (notes === draft || Date.now() - typedAt.current < TYPING_GRACE_MS) return;
+    const timeoutId = window.setTimeout(() => setDraft(notes), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [draft, notes]);
+
+  const write = (text: string) => {
+    typedAt.current = Date.now();
+    setDraft(text);
+    dispatch({ kind: "notes", text });
+  };
+  return [draft, write] as const;
+}
+
+function NoteSizeControl({ index, change }: { index: number; change: (step: number) => void }) {
+  return (
+    <div className="size-control" role="group" aria-label="ขนาดตัวอักษร">
+      <button type="button" className="icon-btn" onClick={() => change(-1)} disabled={index === 0} aria-label="ตัวอักษรเล็กลง">
+        <AArrowDown size={20} aria-hidden="true" />
+      </button>
+      <button type="button" className="icon-btn" onClick={() => change(1)} disabled={index === NOTE_SIZES.length - 1} aria-label="ตัวอักษรใหญ่ขึ้น">
+        <AArrowUp size={20} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 export function NotesPanel({
   notes,
-  editable,
+  isHost,
+  shared,
   dispatch,
   onExpand,
 }: {
   notes: string;
-  editable: boolean;
+  isHost: boolean;
+  /** The host lets everyone write in the notes too. */
+  shared: boolean;
   dispatch: (intent: RoomIntent) => void;
   onExpand: () => void;
 }) {
   const inputId = useId();
+  const { size, index, change } = useNoteSize();
+  const [draft, write] = useNoteDraft(notes, dispatch);
+  const canEdit = isHost || shared;
+
   return (
     <section className="card notes-card" aria-labelledby={`${inputId}-title`}>
       <div className="card-head">
         <h2 id={`${inputId}-title`}>โน้ต &amp; เนื้อเพลง</h2>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={onExpand}>
-          <Maximize2 size={16} aria-hidden="true" /> ขยาย
-        </button>
+        <div className="notes-tools">
+          <NoteSizeControl index={index} change={change} />
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onExpand}>
+            <Maximize2 size={16} aria-hidden="true" /> ขยาย
+          </button>
+        </div>
       </div>
-      {editable ? (
+      {isHost && (
+        <button
+          type="button"
+          className={`pill notes-toggle${shared ? " is-on" : ""}`}
+          aria-pressed={shared}
+          onClick={() => dispatch({ kind: "notesShared", shared: !shared })}
+        >
+          <UsersRound size={16} aria-hidden="true" /> ให้เพื่อนในห้องช่วยเขียน
+        </button>
+      )}
+      {canEdit ? (
         <>
           <label htmlFor={inputId} className="sr-only">โน้ตถึงทุกคนในห้อง</label>
           <textarea
             id={inputId}
             className="notes-input"
-            value={notes}
+            style={{ fontSize: size }}
+            value={draft}
             maxLength={MAX_NOTES}
-            onChange={(event) => dispatch({ kind: "notes", text: event.target.value })}
-            placeholder={"แปะเนื้อเพลง ลิงก์ หรือโน้ตถึงทุกคนในห้อง…\nทุกคนเห็นทันที และกด “ขยาย” เพื่ออ่านตัวใหญ่"}
+            onChange={(event) => write(event.target.value)}
+            placeholder={"แปะเนื้อเพลง ลิงก์ หรือโน้ตถึงทุกคนในห้อง…\nทุกคนเห็นทันที กด A+ ให้ตัวใหญ่ขึ้น หรือกด “ขยาย” เพื่ออ่านเต็มจอ"}
           />
-          <p className="notes-meta">เฉพาะโฮสต์แก้ไขได้ · {notes.length.toLocaleString("th-TH")}/{MAX_NOTES.toLocaleString("th-TH")} ตัวอักษร</p>
+          <p className="notes-meta">
+            {isHost && !shared ? "เฉพาะโฮสต์แก้ไขได้" : "ทุกคนในห้องช่วยเขียนได้"} · {draft.length.toLocaleString("th-TH")}/{MAX_NOTES.toLocaleString("th-TH")} ตัวอักษร
+          </p>
         </>
       ) : notes.trim() ? (
-        <div className="notes-text" tabIndex={0}>{notes}</div>
+        <div className="notes-text" style={{ fontSize: size }} tabIndex={0}>{notes}</div>
       ) : (
         <EmptyNote art="notebook">โฮสต์ยังไม่ได้แปะเนื้อเพลงหรือโน้ต</EmptyNote>
       )}
@@ -154,49 +243,64 @@ export function NotesPanel({
   );
 }
 
-const NOTE_SIZES = [20, 26, 32, 40, 52];
-
 export function NotesDialog({
   notes,
-  editable,
+  isHost,
+  shared,
   dispatch,
   onClose,
 }: {
   notes: string;
-  editable: boolean;
+  isHost: boolean;
+  shared: boolean;
   dispatch: (intent: RoomIntent) => void;
   onClose: () => void;
 }) {
-  const [sizeIndex, setSizeIndex] = useState(2);
+  const { size, index, change } = useNoteSize();
+  const [draft, write] = useNoteDraft(notes, dispatch);
+  const canEdit = isHost || shared;
+
   return (
     <Dialog labelledBy="notes-dialog-title" onClose={onClose} className="dialog-wide">
       <div className="notes-dialog-head">
         <h2 id="notes-dialog-title">โน้ต &amp; เนื้อเพลง</h2>
-        <div className="size-control" role="group" aria-label="ขนาดตัวอักษร">
-          <button type="button" className="icon-btn" onClick={() => setSizeIndex((index) => Math.max(0, index - 1))} disabled={sizeIndex === 0} aria-label="ตัวอักษรเล็กลง">
-            <AArrowDown size={20} aria-hidden="true" />
-          </button>
-          <button type="button" className="icon-btn" onClick={() => setSizeIndex((index) => Math.min(NOTE_SIZES.length - 1, index + 1))} disabled={sizeIndex === NOTE_SIZES.length - 1} aria-label="ตัวอักษรใหญ่ขึ้น">
-            <AArrowUp size={20} aria-hidden="true" />
-          </button>
-        </div>
+        <NoteSizeControl index={index} change={change} />
       </div>
-      {editable ? (
+      {canEdit ? (
         <textarea
           className="notes-input notes-large"
-          style={{ fontSize: NOTE_SIZES[sizeIndex] }}
-          value={notes}
+          style={{ fontSize: size }}
+          value={draft}
           maxLength={MAX_NOTES}
-          onChange={(event) => dispatch({ kind: "notes", text: event.target.value })}
+          onChange={(event) => write(event.target.value)}
           aria-label="โน้ตถึงทุกคนในห้อง"
           placeholder="แปะเนื้อเพลงหรือโน้ตที่นี่"
         />
       ) : (
-        <div className="notes-text notes-large" style={{ fontSize: NOTE_SIZES[sizeIndex] }} tabIndex={0}>
+        <div className="notes-text notes-large" style={{ fontSize: size }} tabIndex={0}>
           {notes.trim() || "โฮสต์ยังไม่ได้แปะเนื้อเพลงหรือโน้ต"}
         </div>
       )}
     </Dialog>
+  );
+}
+
+export function CrossfadeSelect({ value, dispatch }: { value: number; dispatch: (intent: RoomIntent) => void }) {
+  const selectId = useId();
+  return (
+    <span className="crossfade-select">
+      <label htmlFor={selectId}>ครอสเฟด</label>
+      <select
+        id={selectId}
+        className="field"
+        value={value}
+        onChange={(event) => dispatch({ kind: "crossfade", seconds: Number(event.target.value) })}
+      >
+        {CROSSFADE_OPTIONS.map((seconds) => (
+          <option key={seconds} value={seconds}>{seconds === 0 ? "ปิด" : `${seconds} วิ`}</option>
+        ))}
+      </select>
+    </span>
   );
 }
 

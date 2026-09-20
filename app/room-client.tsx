@@ -2,15 +2,16 @@
 
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMidiBridge } from "../lib/midi-bridge";
+import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  createRoomState, hasContent, reduceRoom, sanitizeGuestIntent, sanitizeState,
+  createRoomState, hasContent, isReaction, reduceRoom, sanitizeGuestIntent, sanitizeState,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { lookupVideo, parseYouTubeId } from "../lib/youtube";
 import { HomeScreen } from "./components/home-screen";
+import { BURST_LIFETIME_MS, type EmojiBurst, makeBurst } from "./components/reactions";
 import { RemoteRoom, WaitingRoom } from "./components/remote-room";
 import type { AddVideoResult, RoomModel, Toast } from "./components/room-model";
 import { InviteDialog, NameDialog, NotesDialog, RoomHeader } from "./components/room-panels";
@@ -27,6 +28,7 @@ const NOTES_BROADCAST_DELAY_MS = 350;
 const HEARTBEAT_WATCHING_MS = 4000;
 const HEARTBEAT_IDLE_MS = 15_000;
 const TOAST_MS = 4000;
+const MAX_BURSTS = 8;
 const SKIP_AFTER_ERROR_MS = 2500;
 
 type DialogKind = "invite" | "name" | "notes";
@@ -70,6 +72,7 @@ export default function RoomClient({
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [keyFlash, setKeyFlash] = useState(0);
+  const [bursts, setBursts] = useState<EmojiBurst[]>([]);
   const [appOrigin, setAppOrigin] = useState("");
   const shellRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
@@ -83,8 +86,8 @@ export default function RoomClient({
   const broadcastDueRef = useRef(0);
   const toastIdRef = useRef(0);
   const connectedRef = useRef(false);
-  const midi = useMidiBridge();
-  const sendStepsRef = useRef(midi.sendSteps);
+  const burstIdRef = useRef(0);
+  const keyHelperRef = useRef(false);
   const supabaseConfig = useMemo(() => ({ url: supabaseUrl, key: supabaseKey }), [supabaseKey, supabaseUrl]);
   const realtimeConfigured = isSupabaseConfigured(supabaseConfig);
 
@@ -107,7 +110,10 @@ export default function RoomClient({
     sessionRef.current ||= crypto.randomUUID().slice(0, 8);
     const current = stateRef.current;
     const position = current.nowPlaying ? timeRef.current?.() ?? current.position : 0;
-    broadcastRef.current({ kind: "state", state: { ...current, session: sessionRef.current, position } });
+    broadcastRef.current({
+      kind: "state",
+      state: { ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current },
+    });
   }, []);
 
   const scheduleBroadcast = useCallback((delay: number) => {
@@ -118,19 +124,21 @@ export default function RoomClient({
     broadcastTimerRef.current = window.setTimeout(broadcastStateNow, delay);
   }, [broadcastStateNow]);
 
+  const pushBurst = useCallback((emoji: string, from: string) => {
+    burstIdRef.current += 1;
+    const burst = makeBurst(burstIdRef.current, emoji, from);
+    setBursts((current) => [...current.slice(-(MAX_BURSTS - 1)), burst]);
+    window.setTimeout(() => setBursts((current) => current.filter((item) => item.id !== burst.id)), BURST_LIFETIME_MS);
+  }, []);
+
   /** Applies a change as the room's source of truth. Only the host (or a room without realtime) does this. */
-  const commit = useCallback((intent: RoomIntent, options: { midi?: boolean } = {}) => {
+  const commit = useCallback((intent: RoomIntent) => {
     const previous = stateRef.current;
     const next = reduceRoom(previous, intent);
     if (next === previous) return next;
     replaceState(next);
     scheduleBroadcast(intent.kind === "notes" ? NOTES_BROADCAST_DELAY_MS : BROADCAST_DELAY_MS);
-    if (intent.kind === "key" || intent.kind === "mode") {
-      // A new song resets the key by itself in Transpose, so only explicit key changes are sent to it.
-      const steps = next.key - previous.key;
-      if (steps !== 0 && options.midi !== false) sendStepsRef.current(steps);
-      if (intent.kind === "key") setKeyFlash((count) => count + 1);
-    }
+    if (intent.kind === "key") setKeyFlash((count) => count + 1);
     if (intent.kind === "add") pushToast(`${intent.item.addedBy} เพิ่ม “${intent.item.title}”`);
     return next;
   }, [pushToast, replaceState, scheduleBroadcast]);
@@ -148,6 +156,13 @@ export default function RoomClient({
     const guestIntent = sanitizeGuestIntent(intent);
     if (guestIntent) broadcastRef.current({ kind: "intent", intent: guestIntent });
   }, [commit, pushToast, realtimeConfigured]);
+
+  const sendReaction = useCallback((emoji: string) => {
+    if (!isReaction(emoji)) return;
+    const from = selfNameRef.current;
+    pushBurst(emoji, from);
+    if (realtimeConfigured) broadcastRef.current({ kind: "react", emoji, from });
+  }, [pushBurst, realtimeConfigured]);
 
   const addVideo = useCallback(async (input: string): Promise<AddVideoResult> => {
     const videoId = parseYouTubeId(input);
@@ -195,7 +210,14 @@ export default function RoomClient({
       case "intent": {
         if (!isHostRef.current) return;
         const intent = sanitizeGuestIntent(event.intent);
-        if (intent) commit(intent);
+        if (!intent) return;
+        // Guests write the notes only while the host has shared them.
+        if (intent.kind === "notes" && !stateRef.current.notesShared) return;
+        commit(intent);
+        return;
+      }
+      case "react": {
+        if (isReaction(event.emoji)) pushBurst(event.emoji, typeof event.from === "string" ? event.from.slice(0, 32) : "ใครบางคน");
         return;
       }
       case "state": {
@@ -232,7 +254,7 @@ export default function RoomClient({
         return;
       }
     }
-  }, [broadcastStateNow, commit, confirmPendingAdds, replaceState]);
+  }, [broadcastStateNow, commit, confirmPendingAdds, pushBurst, replaceState]);
 
   const handleResync = useCallback(({ isHost: selfIsHost }: RoomSelf) => {
     if (!selfIsHost) broadcastRef.current({ kind: "state:request" });
@@ -256,16 +278,23 @@ export default function RoomClient({
     supabase: supabaseConfig,
   });
 
+  const keyHelperStatus = useKeyHelperStatus(isHost && state.mode === "karaoke");
   const selfName = listenerName || (isHost ? "โฮสต์" : selfId ? `ผู้ฟัง ${selfId.slice(0, 4).toUpperCase()}` : "ผู้ฟัง");
   const hostOnline = members.some((member) => member.isHost);
+
+  useEffect(() => {
+    const ready = keyHelperStatus === "ready";
+    if (keyHelperRef.current === ready) return;
+    keyHelperRef.current = ready;
+    scheduleBroadcast(BROADCAST_DELAY_MS);
+  }, [keyHelperStatus, scheduleBroadcast]);
 
   useEffect(() => {
     isHostRef.current = isHost;
     connectedRef.current = status === "connected";
     broadcastRef.current = broadcast;
     selfNameRef.current = selfName;
-    sendStepsRef.current = midi.sendSteps;
-  }, [broadcast, isHost, midi.sendSteps, selfName, status]);
+  }, [broadcast, isHost, selfName, status]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -297,6 +326,11 @@ export default function RoomClient({
     commit({ kind: "next" });
   }, [commit]);
 
+  // Crossfade: the next song starts while this one is still playing out.
+  const handleNearEnd = useCallback(() => {
+    commit({ kind: "next" });
+  }, [commit]);
+
   const handlePlayerError = useCallback(() => {
     const failedId = stateRef.current.nowPlaying?.id;
     pushToast("วิดีโอนี้เล่นในห้องไม่ได้ กำลังข้ามไปเพลงถัดไป");
@@ -313,6 +347,7 @@ export default function RoomClient({
     setFollow(undefined);
     setResume(undefined);
     setToasts([]);
+    setBursts([]);
   }
 
   function createRoom(mode: RoomMode) {
@@ -405,6 +440,10 @@ export default function RoomClient({
       playing={state.isPlaying}
       controls={isHost}
       fullscreenButton={state.mode === "watch"}
+      crossfade={state.crossfade}
+      hasNext={state.queue.length > 0}
+      semitones={isHost && state.mode === "karaoke" ? state.key : undefined}
+      onNearEnd={isHost ? handleNearEnd : undefined}
       follow={isHost ? undefined : follow}
       resume={isHost ? resume : undefined}
       timeRef={isHost ? timeRef : undefined}
@@ -425,11 +464,12 @@ export default function RoomClient({
         player={player}
         toasts={toasts}
         keyFlash={keyFlash}
-        midi={midi}
-        onCalibrateKey={() => commit({ kind: "key", step: 0 }, { midi: false })}
+        bursts={bursts}
+        keyHelperStatus={keyHelperStatus}
+        onReact={sendReaction}
       />
     );
-  } else view = <RemoteRoom model={model} onRename={() => setDialog("name")} />;
+  } else view = <RemoteRoom model={model} onRename={() => setDialog("name")} onReact={sendReaction} />;
 
   return (
     <div ref={shellRef} className={`room-shell mode-${state.mode}${tvScreen ? " is-tv" : ""}`}>
@@ -447,7 +487,7 @@ export default function RoomClient({
       {dialog === "invite" && <InviteDialog model={model} onClose={() => setDialog(null)} />}
       {dialog === "name" && <NameDialog name={listenerName} onSave={saveName} onClose={() => setDialog(null)} />}
       {dialog === "notes" && (
-        <NotesDialog notes={state.notes} editable={isHost} dispatch={dispatch} onClose={() => setDialog(null)} />
+        <NotesDialog notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onClose={() => setDialog(null)} />
       )}
     </div>
   );

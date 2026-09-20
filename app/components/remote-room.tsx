@@ -3,12 +3,17 @@
 import { Music2, PencilLine } from "lucide-react";
 import type { RealtimeStatus } from "../../lib/room-realtime";
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
+import { EmojiPad } from "./reactions";
 import { KeyControl } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art, VideoThumb } from "./ui";
 
 /** Remote and karaoke, guest side: a phone remote for the host's screen. */
-export function RemoteRoom({ model, onRename }: { model: RoomModel; onRename: () => void }) {
+export function RemoteRoom({ model, onRename, onReact }: {
+  model: RoomModel;
+  onRename: () => void;
+  onReact: (emoji: string) => void;
+}) {
   const { state, dispatch, selfName } = model;
   const karaoke = state.mode === "karaoke";
   const mine = state.queue.findIndex((item) => item.addedBy === selfName);
@@ -39,7 +44,18 @@ export function RemoteRoom({ model, onRename }: { model: RoomModel; onRename: ()
         <section className="card remote-key" aria-labelledby="remote-key-title">
           <h2 id="remote-key-title">ปรับคีย์เพลงที่กำลังเล่น</h2>
           <KeyControl value={state.key} dispatch={dispatch} large />
-          <p className="hint">ครึ่งเสียงต่อครั้ง เพลงใหม่เริ่มที่คีย์ต้นฉบับ</p>
+          <p className="hint">
+            {state.keyHelper
+              ? "ครึ่งเสียงต่อครั้ง เพลงใหม่เริ่มที่คีย์ต้นฉบับ"
+              : "จอกลางยังไม่ได้ติดตั้งส่วนเสริมเปลี่ยนคีย์ ตัวเลขจะขึ้นจอ แต่เสียงยังไม่เปลี่ยน"}
+          </p>
+        </section>
+      )}
+
+      {karaoke && (
+        <section className="card remote-emoji" aria-labelledby="remote-emoji-title">
+          <h2 id="remote-emoji-title">ส่งอีโมจิขึ้นจอ</h2>
+          <EmojiPad onSend={onReact} />
         </section>
       )}
 

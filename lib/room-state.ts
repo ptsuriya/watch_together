@@ -30,6 +30,12 @@ export type RoomState = {
   notes: string;
   /** Karaoke key offset in semitones. */
   key: number;
+  /** Guests may edit the notes too, not only the host. */
+  notesShared: boolean;
+  /** Seconds the end of a song overlaps the start of the next one; 0 turns crossfading off. */
+  crossfade: number;
+  /** The host screen has the key-change extension, so key buttons change the sound (not only the number). */
+  keyHelper: boolean;
 };
 
 export type RoomIntent =
@@ -42,20 +48,26 @@ export type RoomIntent =
   | { kind: "jump"; itemId: string }
   | { kind: "notes"; text: string }
   | { kind: "mode"; mode: RoomMode }
-  | { kind: "playback"; playing: boolean };
+  | { kind: "playback"; playing: boolean }
+  | { kind: "notesShared"; shared: boolean }
+  | { kind: "crossfade"; seconds: number };
 
-/** What a guest may ask the host to do. Everything else is host-only. */
-export type GuestIntent = Extract<RoomIntent, { kind: "add" | "play" | "pause" | "next" | "key" }>;
+/** What a guest may ask the host to do. Everything else is host-only; "notes" only while the host shares them. */
+export type GuestIntent = Extract<RoomIntent, { kind: "add" | "play" | "pause" | "next" | "key" | "notes" }>;
 
 export type RoomEvent =
   | { kind: "intent"; intent: GuestIntent }
   | { kind: "state"; state: RoomState }
   | { kind: "state:request"; fromHost?: boolean }
-  | { kind: "state:recover"; state: RoomState };
+  | { kind: "state:recover"; state: RoomState }
+  | { kind: "react"; emoji: string; from: string };
 
 export const MAX_QUEUE = 100;
 export const MAX_NOTES = 20_000;
 export const KEY_RANGE = 12;
+export const CROSSFADE_OPTIONS = [0, 3, 6, 10] as const;
+export const DEFAULT_CROSSFADE = 6;
+export const REACTIONS = ["👏", "🔥", "😍", "😂", "🎉", "🐻", "❤️", "🍯", "🎤", "💯"] as const;
 
 export const VIDEO_ID_PATTERN = /^[\w-]{11}$/;
 
@@ -64,7 +76,10 @@ export function isVideoId(value: unknown): value is string {
 }
 
 export function createRoomState(mode: RoomMode, session = ""): RoomState {
-  return { session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0 };
+  return {
+    session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
+    notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false,
+  };
 }
 
 export function hasContent(state: RoomState) {
@@ -122,7 +137,21 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     }
     case "mode":
       return intent.mode === state.mode ? state : { ...state, mode: intent.mode, key: 0 };
+    case "notesShared":
+      return intent.shared === state.notesShared ? state : { ...state, notesShared: intent.shared };
+    case "crossfade": {
+      const seconds = parseCrossfade(intent.seconds);
+      return seconds === state.crossfade ? state : { ...state, crossfade: seconds };
+    }
   }
+}
+
+function parseCrossfade(value: unknown) {
+  return CROSSFADE_OPTIONS.find((option) => option === value) ?? DEFAULT_CROSSFADE;
+}
+
+export function isReaction(value: unknown): value is (typeof REACTIONS)[number] {
+  return REACTIONS.some((reaction) => reaction === value);
 }
 
 // Everything below reads payloads from other room members, which any member can forge. Keep only well-formed fields.
@@ -167,6 +196,9 @@ export function sanitizeState(value: unknown): RoomState | null {
     position,
     notes: typeof value.notes === "string" ? value.notes.slice(0, MAX_NOTES) : "",
     key,
+    notesShared: value.notesShared === true,
+    crossfade: parseCrossfade(value.crossfade),
+    keyHelper: value.keyHelper === true,
   };
 }
 
@@ -183,6 +215,8 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
       return { kind: value.kind };
     case "key":
       return value.step === -1 || value.step === 0 || value.step === 1 ? { kind: "key", step: value.step } : null;
+    case "notes":
+      return typeof value.text === "string" ? { kind: "notes", text: value.text.slice(0, MAX_NOTES) } : null;
     default:
       return null;
   }

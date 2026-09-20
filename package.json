@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "extension:zip": "rm -f public/kuma-karaoke-key.zip && cd extension && zip -qr ../public/kuma-karaoke-key.zip . -x '.DS_Store' '*/.DS_Store'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

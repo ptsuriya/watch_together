@@ -2,10 +2,11 @@
 
 import type { ReactNode } from "react";
 import { formatKey } from "../../lib/room-state";
-import type { MidiBridge } from "../../lib/midi-bridge";
-import { KaraokeBridge } from "./karaoke-bridge";
+import type { HelperStatus } from "../../lib/karaoke-key";
+import { KeyHelperCard, KeyHelperProbe } from "./key-helper";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
-import { KeyControl, RoomQr } from "./room-panels";
+import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
+import { CrossfadeSelect, KeyControl, RoomQr } from "./room-panels";
 import type { RoomModel, Toast } from "./room-model";
 import { Art, ToastStack } from "./ui";
 
@@ -20,15 +21,17 @@ export function TvRoom({
   player,
   toasts,
   keyFlash,
-  midi,
-  onCalibrateKey,
+  bursts,
+  keyHelperStatus,
+  onReact,
 }: {
   model: RoomModel;
   player: ReactNode;
   toasts: Toast[];
   keyFlash: number;
-  midi: MidiBridge;
-  onCalibrateKey: () => void;
+  bursts: EmojiBurst[];
+  keyHelperStatus: HelperStatus;
+  onReact: (emoji: string) => void;
 }) {
   const { state, dispatch, selfName, inviteUrl, roomCode } = model;
   const karaoke = state.mode === "karaoke";
@@ -66,6 +69,7 @@ export function TvRoom({
           </p>
         )}
         {karaoke && keyFlash > 0 && <p key={keyFlash} className="key-pop" aria-hidden="true">คีย์ {formatKey(state.key)}</p>}
+        <EmojiRain bursts={bursts} />
       </section>
 
       <aside className="tv-side" aria-label="คิวและการควบคุม">
@@ -92,14 +96,17 @@ export function TvRoom({
           <div className="card-head">
             <h2 id="tv-queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
           </div>
+          <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
           <QueueList items={state.queue} selfName={selfName} isHost dispatch={dispatch} limit={UP_NEXT_LIMIT} emptyText="ยังไม่มีเพลงต่อคิว" />
           <AddVideoForm onAdd={model.addVideo} compact label="เพิ่มลิงก์ YouTube จากเครื่องนี้" />
         </section>
 
         {karaoke && (
-          <section className="card side-key" aria-label="คีย์">
+          <section className="card side-key" aria-label="คีย์และอีโมจิ">
             <KeyControl value={state.key} dispatch={dispatch} />
-            <KaraokeBridge midi={midi} onCalibrate={onCalibrateKey} />
+            <KeyHelperCard status={keyHelperStatus} />
+            <EmojiPad onSend={onReact} compact />
+            <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </section>
         )}
       </aside>

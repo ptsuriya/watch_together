@@ -4,9 +4,11 @@ Private YouTube rooms in three modes, styled with the KUMA honey-bear sticker th
 
 | Mode | Host screen | Everyone else |
 | --- | --- | --- |
-| **Watch together** (`watch`) | Video \| notes on top, members \| up next below | Same layout; their player follows the host. Anyone can queue, play, pause and skip. Only the host edits the notes (e.g. lyrics), which anyone can open large. |
+| **Watch together** (`watch`) | Video \| notes on top, members \| up next below | Same layout; their player follows the host. Anyone can queue, play, pause and skip; the notes hold the lyrics and the host can open them to everyone. |
 | **Remote** (`remote`) | The shared TV or shared screen: the video takes the space, the QR stays in view, the queue shows the next few songs | A phone remote: add songs, play/pause, skip |
-| **Karaoke** (`karaoke`) | Remote, plus the current key on screen and a MIDI bridge to the Transpose extension | Remote, plus key −/+ and reset |
+| **Karaoke** (`karaoke`) | Remote, plus the current key on screen and emoji flying up from the phones | Remote, plus key −/+, reset and an emoji pad |
+
+Songs crossfade into each other in every mode.
 
 ## Deploy to Vercel with Supabase Realtime
 
@@ -30,19 +32,29 @@ npm run dev
 
 ## Realtime behavior
 
-- The host page is the room's source of truth. Guests send requests (add, play, pause, skip, key) and render the state the host broadcasts after every change, plus a heartbeat (every 4 s while a watch room plays, otherwise every 15 s).
+- The host page is the room's source of truth. Guests send requests (add, play, pause, skip, key, notes) and render the state the host broadcasts after every change, plus a heartbeat (every 4 s while a watch room plays, otherwise every 15 s).
 - In watch mode a guest's player follows the host's position and corrects drift over 1.6 s. Browsers may block autoplay with sound until the person taps; the player then shows a "tap to play" button.
 - Room state is live-only. If the host reloads, guests hand the queue back; a room with no host online does not play.
 - `GET /api/video?id=` looks titles up through YouTube oEmbed and rejects videos that cannot be embedded before they reach the queue.
 
-## Karaoke key changes with Transpose
+## Crossfade
 
-The [Transpose](https://transpose.video/) extension has no API for web pages, but it can learn MIDI buttons. In karaoke mode the host page sends the phone's key changes to a virtual MIDI port with Web MIDI (Chrome or Edge on a computer), and Transpose listens on the same port:
+Every mode keeps two YouTube players. When a song is within the crossfade of its end and something is queued, the next song starts on the second player while the first fades out; a manual skip uses a short 1.5 s fade instead. The host picks 0 (off), 3, 6 or 10 seconds next to the queue, and the setting travels with the room state so guests fade at the same time. iOS ignores `setVolume`, so players there switch without an overlap.
 
-1. Create a virtual port: on macOS open Audio MIDI Setup › Window › Show MIDI Studio, open **IAC Driver** and tick **Device is online**; on Windows install loopMIDI and add a port.
-2. In the karaoke room, open **ต่อ Transpose** in the sidebar, press **เชื่อมต่อ MIDI** and pick that port.
-3. In Transpose, open the Side panel › Settings › enable MIDI shortcuts › Connect MIDI › pick the same port.
-4. Press **Learn** next to Transpose − and then **ทดสอบคีย์ลง** in the room (it sends after a 3-second countdown). Repeat for Transpose + with **ทดสอบคีย์ขึ้น**. The notes are C4 (60) for down and D4 (62) for up.
-5. Keep the Transpose Side panel open while singing, and leave *Remember adjustments* on **Do not save** so each new song starts in its original key, as the room assumes.
+## Emoji bomb
 
-If Transpose cannot hear the embedded player, allow it on both this site and `youtube-nocookie.com`, or use its Tab Audio mode. Without the bridge the room still works: the key shown on the TV tells the host what to set in Transpose.
+In karaoke mode every phone has an emoji pad. A tap broadcasts one `react` event and each screen throws a burst of that emoji up the TV, with the sender's name underneath. Only the ten emoji in `REACTIONS` are accepted.
+
+## Notes and lyrics
+
+The host can paste lyrics into the notes, and everyone sees them live. **ให้เพื่อนในห้องช่วยเขียน** lets guests type in them too (last writer wins; incoming text is only adopted during a typing pause so the cursor does not jump). A− / A+ set the reading size, on the panel and in the full-screen view, and the size is remembered per device.
+
+## Karaoke key changes
+
+Pitch-shifting YouTube audio is only possible from inside the embed, so the key buttons need the **KUMA Karaoke Key** extension on the host screen (Chrome or Edge on a computer). Its source is in `extension/`, and `npm run extension:zip` packs `public/kuma-karaoke-key.zip`, which the karaoke sidebar offers for download.
+
+Install while it is not on the Chrome Web Store yet: download the zip, unzip it, open `chrome://extensions`, turn on Developer mode, press **Load unpacked** and pick the folder. Set `NEXT_PUBLIC_KARAOKE_EXTENSION_URL` once the extension is published, and the sidebar shows a one-click store button instead.
+
+How it works: the extension's content script runs in the `youtube-nocookie.com` embed, and the room posts `{source: "kuma-listening-party", type: "key", semitones}` to that frame. The script routes the video through Web Audio into [Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/) (MIT, vendored in `extension/vendor/`), which shifts the pitch with about 70 ms of latency. At key 0 the audio is not processed at all. Nothing is collected or sent anywhere; the extension asks for no permissions beyond that one site.
+
+Without the extension the room still works: the key on the TV and on the phones changes, but the sound does not.
