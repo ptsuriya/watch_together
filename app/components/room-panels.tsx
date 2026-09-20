@@ -5,12 +5,13 @@ import {
   AArrowDown, AArrowUp, Check, Copy, Crown, Maximize, Maximize2, Mic, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
   MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
 import {
   CROSSFADE_OPTIONS, formatKey, KEY_CONTROL_OPTIONS, KEY_RANGE, KEY_UNIT, MAX_NOTES,
   type KeyControl as KeyControlMode, type KeyStep, type RoomIntent, type RoomMode,
 } from "../../lib/room-state";
+import { canCrossfade } from "../../lib/youtube";
 import { MODE_LABELS, type RoomModel } from "./room-model";
 import { Art, Avatar, Brand, Dialog, EmptyNote } from "./ui";
 
@@ -307,11 +308,15 @@ export function NotesDialog({
   );
 }
 
+const noSubscribe = () => () => {};
+
 export function CrossfadeSelect({ value, dispatch }: { value: number; dispatch: (intent: RoomIntent) => void }) {
   const selectId = useId();
+  // Read after hydration: the server has no idea what device this is. It never changes, so nothing to subscribe to.
+  const supported = useSyncExternalStore(noSubscribe, canCrossfade, () => true);
   return (
     <span className="crossfade-select">
-      <label htmlFor={selectId}>ครอสเฟด</label>
+      <label htmlFor={selectId}>ครอสเฟด{value > 0 && !supported && <em className="hint-off"> จอนี้ต่อแบบตัด</em>}</label>
       <select
         id={selectId}
         className="field"

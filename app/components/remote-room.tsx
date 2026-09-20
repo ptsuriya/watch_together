@@ -2,8 +2,9 @@
 
 import { Music2, PencilLine } from "lucide-react";
 import type { RealtimeStatus } from "../../lib/room-realtime";
-import { mayChangeKey } from "../../lib/room-state";
+import { mayChangeKey, singerOf } from "../../lib/room-state";
 import { ChatBar, ChatLog, type ChatMessage } from "./chat";
+import { PartyButton, ScorePad, SpotlightBanner } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
 import { EmojiPad } from "./reactions";
 import { MODE_LABELS, type RoomModel } from "./room-model";
@@ -11,14 +12,15 @@ import { ChatToggle, CrossfadeSelect, KeyControl, KeyControlSelect, NotesToggle 
 import { Art, VideoThumb } from "./ui";
 
 /** Remote and karaoke, guest side: a phone remote for the host's screen. */
-export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
+export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenParty }: {
   model: RoomModel;
   messages: ChatMessage[];
   onRename: () => void;
   onReact: (emoji: string) => void;
   onChat: (text: string) => void;
+  onOpenParty: () => void;
 }) {
-  const { state, canManage, dispatch, selfName } = model;
+  const { state, canManage, dispatch, selfId, selfName } = model;
   const karaoke = state.mode === "karaoke";
   const canChangeKey = mayChangeKey(state, selfName);
   const mine = state.queue.findIndex((item) => item.addedBy === selfName);
@@ -33,6 +35,8 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
         </div>
       </section>
 
+      {state.spotlight && <SpotlightBanner spotlight={state.spotlight} mine={state.spotlight.memberId === selfId} place="phone" />}
+
       <section className="card remote-now" aria-label="กำลังเล่นบนจอกลาง">
         <div className="remote-art">
           {state.nowPlaying ? <VideoThumb videoId={state.nowPlaying.videoId} className="remote-thumb" /> : <span className="remote-thumb is-empty"><Music2 size={34} aria-hidden="true" /></span>}
@@ -40,10 +44,12 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
         <div className="remote-now-copy">
           <small>{state.nowPlaying ? (state.isPlaying ? "กำลังเล่นบนจอกลาง" : "หยุดชั่วคราว") : "จอกลางว่างอยู่"}</small>
           <strong>{state.nowPlaying?.title ?? "เพิ่มเพลงแรกได้เลย"}</strong>
-          {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {state.nowPlaying.addedBy}</span>}
+          {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
         </div>
         <PlaybackButtons state={state} dispatch={dispatch} size="lg" />
       </section>
+
+      <ScorePad state={state} selfId={selfId} dispatch={dispatch} />
 
       {karaoke && (
         <section className="card remote-key" aria-labelledby="remote-key-title">
@@ -71,6 +77,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
             <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
             <NotesToggle enabled={state.notesOn} dispatch={dispatch} />
             <ChatToggle enabled={state.chat} dispatch={dispatch} />
+            <PartyButton state={state} onOpen={onOpenParty} />
           </div>
           {karaoke && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
         </section>
@@ -83,6 +90,10 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
 
       <section className="card remote-add" aria-labelledby="remote-add-title">
         <h2 id="remote-add-title">{karaoke ? "ขอเพลง" : "เพิ่มเพลงเข้าคิว"}</h2>
+        {state.queueLimit > 0 && !canManage && (
+          <p className="hint">ห้องนี้ให้คนละ {state.queueLimit} เพลงในคิว</p>
+        )}
+        {state.game === "blind" && <p className="hint">เกมร้องเพลงมั่ว: เพลงที่คุณเพิ่มจะถูกสุ่มให้คนอื่นร้อง</p>}
         <AddVideoForm onAdd={model.addVideo} submitLabel={karaoke ? "ขอเพลง" : "เข้าคิว"} />
         <YouTubeSearch karaoke={karaoke} />
       </section>
@@ -100,7 +111,15 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
           <h2 id="remote-queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
           {mine >= 0 && <span className="pill pill-honey">ของคุณคิวที่ {mine + 1}</span>}
         </div>
-        <QueueList items={state.queue} selfName={selfName} isHost={canManage} dispatch={dispatch} emptyText="ยังไม่มีคิว เพลงของคุณจะได้เล่นต่อทันที" />
+        <QueueList
+          items={state.queue}
+          selfName={selfName}
+          selfId={selfId}
+          isHost={canManage}
+          voting={state.queueOrder === "vote"}
+          dispatch={dispatch}
+          emptyText="ยังไม่มีคิว เพลงของคุณจะได้เล่นต่อทันที"
+        />
       </section>
 
       <p className="remote-self">

@@ -4,7 +4,7 @@ import { Play } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState, type RefObject } from "react";
 import { readHelperMessage, sendToHelper } from "../../lib/karaoke-key";
 import type { QueueItem } from "../../lib/room-state";
-import { loadYouTubeApi, PlayerState, type YouTubePlayer as Player } from "../../lib/youtube";
+import { canCrossfade, loadYouTubeApi, PlayerState, type YouTubePlayer as Player } from "../../lib/youtube";
 
 /** Where the host's playback was, and the local time that snapshot arrived. */
 export type PlaybackFollow = { position: number; at: number };
@@ -34,12 +34,6 @@ function expectedPosition(follow: PlaybackFollow, playing: boolean) {
 function isRunning(player: Player) {
   const state = player.getPlayerState();
   return state === PlayerState.PLAYING || state === PlayerState.BUFFERING;
-}
-
-// iOS ignores setVolume, so two overlapping players would both play at full volume there.
-function canSetVolume() {
-  const agent = navigator.userAgent;
-  return !/iPhone|iPad|iPod/.test(agent) && !(/Macintosh/.test(agent) && navigator.maxTouchPoints > 1);
 }
 
 function endFade(fade: Fade) {
@@ -173,7 +167,7 @@ export function YouTubePlayer({
 
   useEffect(() => {
     if (crossfade <= 0 || twoDecks) return;
-    const timeoutId = window.setTimeout(() => setTwoDecks(canSetVolume()), 0);
+    const timeoutId = window.setTimeout(() => setTwoDecks(canCrossfade()), 0);
     return () => window.clearTimeout(timeoutId);
   }, [crossfade, twoDecks]);
 
@@ -261,7 +255,12 @@ export function YouTubePlayer({
       player.setVolume(level === 0 ? 1 : Math.max(0, level - 1));
       player.setVolume(level);
     };
+    // A browser can swallow the second player's autoplay; ask again while the fade is still running.
+    const keepPlaying = [600, 1600].map((delay) => window.setTimeout(() => {
+      if (!isRunning(incoming)) incoming.playVideo();
+    }, delay));
     fadeRef.current.finish = () => {
+      keepPlaying.forEach((timer) => window.clearTimeout(timer));
       outgoing.pauseVideo();
       forceVolume(outgoing, volume);
       forceVolume(incoming, volume);
@@ -324,7 +323,7 @@ export function YouTubePlayer({
       if (!deck.player || deck.itemId !== item.id || nearEndItemRef.current === item.id) return;
       const duration = deck.player.getDuration();
       const remaining = duration - deck.player.getCurrentTime();
-      if (duration > crossfade * 3 && remaining > 0 && remaining <= crossfade) {
+      if (duration > crossfade + 6 && remaining > 0 && remaining <= crossfade) {
         nearEndItemRef.current = item.id;
         onNearEnd();
       }

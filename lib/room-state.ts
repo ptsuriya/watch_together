@@ -14,7 +14,18 @@ export type QueueItem = {
   title: string;
   channel: string;
   addedBy: string;
+  /** Who queued it. The host fills this in; it is what per-person limits and the mic bomb count. */
+  addedById?: string;
+  /** Blind karaoke: the person the room picked to sing it, who had no say in the song. */
+  singer?: string;
+  /** Vote mode: the member ids that want this one next. */
+  votes?: string[];
 };
+
+/** Who sings: the person the room picked, or whoever queued it. */
+export function singerOf(item: QueueItem) {
+  return item.singer ?? item.addedBy;
+}
 
 export type RoomState = {
   /** Changes every time the host page loads, so guests can tell a reloaded host from a room that was emptied. */
@@ -44,7 +55,38 @@ export type RoomState = {
   keyControl: KeyControl;
   /** Member ids the host has given the run of the room: queue and settings, everything but handing out this right. */
   cohosts: string[];
+  /** How many songs one guest may keep in the queue at a time; 0 lifts the limit. Hosts and co-hosts are free. */
+  queueLimit: number;
+  /** Which song comes next: the top of the queue, a random one, or the one with the most votes. */
+  queueOrder: QueueOrder;
+  /** The party game running in the room. */
+  game: PartyGame;
+  /** Everyone rates the song that is playing, and the room sees the result when it ends. */
+  scoring: boolean;
+  /** Mic bomb: whose turn it is to find a song, and how long they have left. */
+  spotlight: Spotlight | null;
+  /** Scores for the song playing now, one per member id. */
+  scores: Record<string, number>;
+  /** The result card for the song that just ended; the host clears it after a few seconds. */
+  lastScore: ScoreResult | null;
 };
+
+export type QueueOrder = "line" | "random" | "vote";
+export const QUEUE_ORDERS = ["line", "random", "vote"] as const satisfies readonly QueueOrder[];
+
+/** Off, the mic bomb (the room hands someone the mic), or blind karaoke (you sing what someone else picked). */
+export type PartyGame = "off" | "bomb" | "blind";
+export const PARTY_GAMES = ["off", "bomb", "blind"] as const satisfies readonly PartyGame[];
+
+export const QUEUE_LIMITS = [0, 1, 2, 3, 5] as const;
+/** Long enough to find a song on a phone, short enough to stay a game. */
+export const BOMB_SECONDS = 60;
+export const SCORE_MAX = 5;
+/** How long the room looks at the score of the song that just ended. */
+export const SCORE_SHOW_MS = 12_000;
+
+export type Spotlight = { memberId: string; name: string; seconds: number };
+export type ScoreResult = { title: string; singer: string; average: number; count: number };
 
 export const MAX_COHOSTS = 10;
 
@@ -73,15 +115,30 @@ export type RoomIntent =
   | { kind: "crossfade"; seconds: number }
   | { kind: "chat"; enabled: boolean }
   | { kind: "keyControl"; value: KeyControl }
-  | { kind: "cohost"; memberId: string; enabled: boolean };
+  | { kind: "cohost"; memberId: string; enabled: boolean }
+  | { kind: "queueLimit"; count: number }
+  | { kind: "queueOrder"; value: QueueOrder }
+  | { kind: "game"; value: PartyGame }
+  | { kind: "scoring"; enabled: boolean }
+  /** The host fills in who voted; a guest only says which song. */
+  | { kind: "vote"; itemId: string; memberId?: string }
+  | { kind: "score"; value: number; memberId?: string }
+  /** Hand the mic to someone at random. The host picks the person and the time. */
+  | { kind: "bomb"; memberId?: string; name?: string; seconds?: number }
+  | { kind: "spotlightOff" }
+  | { kind: "scoreClear" };
 
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
-export const MANAGER_INTENTS = ["remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared"] as const;
+export const MANAGER_INTENTS = [
+  "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
+  "queueLimit", "queueOrder", "game", "scoring", "bomb",
+] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
 export type GuestIntent = Extract<
   RoomIntent,
-  { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat" | "notesOn" | "notesShared" }
+  { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
+    | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "scoring" | "vote" | "score" | "bomb" }
 >;
 
 export type RoomEvent =
@@ -90,7 +147,9 @@ export type RoomEvent =
   | { kind: "state:request"; fromHost?: boolean }
   | { kind: "state:recover"; state: RoomState }
   | { kind: "react"; emoji: string; from: string }
-  | { kind: "chat"; text: string; from: string };
+  | { kind: "chat"; text: string; from: string }
+  /** A word from the host meant for one member, e.g. "your queue is full". */
+  | { kind: "notice"; to: string; text: string };
 
 export const MAX_QUEUE = 100;
 export const MAX_NOTES = 20_000;
@@ -110,7 +169,7 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
     notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
-    cohosts: [],
+    cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", scoring: false, spotlight: null, scores: {}, lastScore: null,
   };
 }
 
@@ -139,20 +198,26 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     case "add": {
       const { item } = intent;
       if (state.nowPlaying?.id === item.id || state.queue.some((queued) => queued.id === item.id)) return state;
-      if (!state.nowPlaying) return { ...state, nowPlaying: item, isPlaying: true, position: 0, key: 0 };
+      // Whoever the mic bomb landed on has found their song: it goes on next, and the countdown stops.
+      const answered = Boolean(state.spotlight && item.addedById && state.spotlight.memberId === item.addedById);
+      const spotlight = answered ? null : state.spotlight;
+      if (!state.nowPlaying) return { ...state, nowPlaying: item, isPlaying: true, position: 0, key: 0, spotlight, scores: {} };
       if (state.queue.length >= MAX_QUEUE) return state;
-      return { ...state, queue: [...state.queue, item] };
+      return { ...state, queue: answered ? [item, ...state.queue] : [...state.queue, item], spotlight };
     }
     case "next": {
-      const [next = null, ...rest] = state.queue;
+      const [next, rest] = pickNext(state);
       if (!state.nowPlaying && !next) return state;
       // A new song starts in its original key, the same way Transpose starts new songs by default.
-      return { ...state, nowPlaying: next, queue: rest, isPlaying: next !== null, position: 0, key: 0 };
+      return { ...state, nowPlaying: next, queue: rest, isPlaying: next !== null, position: 0, key: 0, ...closeScores(state) };
     }
     case "jump": {
       const item = state.queue.find((queued) => queued.id === intent.itemId);
       if (!item) return state;
-      return { ...state, nowPlaying: item, queue: state.queue.filter((queued) => queued !== item), isPlaying: true, position: 0, key: 0 };
+      return {
+        ...state, nowPlaying: item, queue: state.queue.filter((queued) => queued !== item),
+        isPlaying: true, position: 0, key: 0, ...closeScores(state),
+      };
     }
     case "remove": {
       const queue = state.queue.filter((queued) => queued.id !== intent.itemId);
@@ -196,7 +261,96 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
         : state.cohosts.filter((id) => id !== intent.memberId);
       return { ...state, cohosts };
     }
+    case "queueLimit": {
+      const count = QUEUE_LIMITS.find((option) => option === intent.count) ?? 0;
+      return count === state.queueLimit ? state : { ...state, queueLimit: count };
+    }
+    case "queueOrder": {
+      const value = QUEUE_ORDERS.find((option) => option === intent.value) ?? "line";
+      return value === state.queueOrder ? state : { ...state, queueOrder: value };
+    }
+    case "game": {
+      const value = PARTY_GAMES.find((option) => option === intent.value) ?? "off";
+      if (value === state.game) return state;
+      return { ...state, game: value, spotlight: value === "bomb" ? state.spotlight : null };
+    }
+    case "scoring": {
+      if (intent.enabled === state.scoring) return state;
+      return { ...state, scoring: intent.enabled, scores: {}, lastScore: null };
+    }
+    case "vote": {
+      if (!intent.memberId) return state;
+      const queue = state.queue.map((item) => {
+        if (item.id !== intent.itemId) return item;
+        const votes = item.votes ?? [];
+        return { ...item, votes: votes.includes(intent.memberId!) ? votes.filter((id) => id !== intent.memberId) : [...votes, intent.memberId!] };
+      });
+      return { ...state, queue };
+    }
+    case "score": {
+      if (!intent.memberId || !state.scoring || !state.nowPlaying) return state;
+      const value = Math.max(1, Math.min(SCORE_MAX, Math.round(intent.value)));
+      if (state.scores[intent.memberId] === value) return state;
+      return { ...state, scores: { ...state.scores, [intent.memberId]: value } };
+    }
+    case "bomb": {
+      if (!intent.memberId || !intent.name) return state;
+      return { ...state, spotlight: { memberId: intent.memberId, name: intent.name, seconds: intent.seconds ?? BOMB_SECONDS } };
+    }
+    case "spotlightOff":
+      return state.spotlight ? { ...state, spotlight: null } : state;
+    case "scoreClear":
+      return state.lastScore ? { ...state, lastScore: null } : state;
   }
+}
+
+/** What the room will play next, as far as anyone can know: random order keeps it a surprise until it happens. */
+export function peekNext(state: RoomState): QueueItem | null {
+  if (state.queue.length === 0 || state.queueOrder === "random") return null;
+  if (state.queueOrder !== "vote") return state.queue[0];
+  return state.queue.reduce((top, item) => ((item.votes?.length ?? 0) > (top.votes?.length ?? 0) ? item : top), state.queue[0]);
+}
+
+/** Which song plays next, and what is left of the queue. */
+function pickNext(state: RoomState): [QueueItem | null, QueueItem[]] {
+  if (state.queue.length === 0) return [null, []];
+  let index = 0;
+  if (state.queueOrder === "random") index = Math.floor(Math.random() * state.queue.length);
+  if (state.queueOrder === "vote") {
+    state.queue.forEach((item, at) => {
+      if ((item.votes?.length ?? 0) > (state.queue[index].votes?.length ?? 0)) index = at;
+    });
+  }
+  return [state.queue[index], state.queue.filter((_, at) => at !== index)];
+}
+
+/** The song is over: turn the scores people sent into the card the room sees, and start the next one clean. */
+function closeScores(state: RoomState): Pick<RoomState, "scores" | "lastScore"> {
+  const values = Object.values(state.scores);
+  if (!state.scoring || !state.nowPlaying || values.length === 0) return { scores: {}, lastScore: null };
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return {
+    scores: {},
+    lastScore: {
+      title: state.nowPlaying.title,
+      singer: singerOf(state.nowPlaying),
+      average: Math.round((total / values.length) * 10) / 10,
+      count: values.length,
+    },
+  };
+}
+
+/** The running average of the song playing now, or null while nobody has rated it. */
+export function scoreAverage(state: RoomState) {
+  const values = Object.values(state.scores);
+  if (values.length === 0) return null;
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return { average: Math.round((total / values.length) * 10) / 10, count: values.length };
+}
+
+/** How many songs this member already has waiting; the limit counts the queue, not the song playing. */
+export function queuedBy(state: RoomState, memberId: string | null | undefined) {
+  return memberId ? state.queue.filter((item) => item.addedById === memberId).length : 0;
 }
 
 function parseCrossfade(value: unknown) {
@@ -247,12 +401,17 @@ export function sanitizeItem(value: unknown): QueueItem | null {
   if (!isRecord(value) || !isVideoId(value.videoId)) return null;
   const id = text(value.id, 64);
   if (!id) return null;
+  const singer = text(value.singer, 32);
+  const addedById = text(value.addedById, 64);
   return {
     id,
     videoId: value.videoId,
     title: text(value.title, 200) || "วิดีโอ YouTube",
     channel: text(value.channel, 100),
     addedBy: text(value.addedBy, 32) || "ผู้ฟัง",
+    ...(addedById ? { addedById } : {}),
+    ...(singer ? { singer } : {}),
+    ...(Array.isArray(value.votes) ? { votes: memberIds(value.votes) } : {}),
   };
 }
 
@@ -281,9 +440,49 @@ export function sanitizeState(value: unknown): RoomState | null {
     keyHelper: value.keyHelper === true,
     chat: value.chat !== false,
     keyControl: parseKeyControl(value.keyControl),
-    cohosts: Array.isArray(value.cohosts)
-      ? value.cohosts.slice(0, MAX_COHOSTS).flatMap((id) => (typeof id === "string" && id.length <= 64 ? [id] : []))
-      : [],
+    cohosts: Array.isArray(value.cohosts) ? memberIds(value.cohosts).slice(0, MAX_COHOSTS) : [],
+    queueLimit: QUEUE_LIMITS.find((option) => option === value.queueLimit) ?? 0,
+    queueOrder: QUEUE_ORDERS.find((option) => option === value.queueOrder) ?? "line",
+    game: PARTY_GAMES.find((option) => option === value.game) ?? "off",
+    scoring: value.scoring === true,
+    spotlight: sanitizeSpotlight(value.spotlight),
+    scores: sanitizeScores(value.scores),
+    lastScore: sanitizeScoreResult(value.lastScore),
+  };
+}
+
+function memberIds(value: unknown[]) {
+  return value.slice(0, MAX_QUEUE).flatMap((id) => (typeof id === "string" && id.length > 0 && id.length <= 64 ? [id] : []));
+}
+
+function sanitizeSpotlight(value: unknown): Spotlight | null {
+  if (!isRecord(value)) return null;
+  const memberId = text(value.memberId, 64);
+  const name = text(value.name, 32);
+  const seconds = typeof value.seconds === "number" && Number.isFinite(value.seconds) ? Math.max(0, Math.round(value.seconds)) : 0;
+  return memberId && name ? { memberId, name, seconds: Math.min(seconds, 600) } : null;
+}
+
+function sanitizeScores(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+  const scores: Record<string, number> = {};
+  for (const [memberId, score] of Object.entries(value).slice(0, MAX_QUEUE)) {
+    if (memberId.length > 64 || typeof score !== "number" || !Number.isFinite(score)) continue;
+    scores[memberId] = Math.max(1, Math.min(SCORE_MAX, Math.round(score)));
+  }
+  return scores;
+}
+
+function sanitizeScoreResult(value: unknown): ScoreResult | null {
+  if (!isRecord(value)) return null;
+  const average = typeof value.average === "number" && Number.isFinite(value.average) ? value.average : null;
+  const count = typeof value.count === "number" && Number.isFinite(value.count) ? Math.round(value.count) : 0;
+  if (average === null || count <= 0) return null;
+  return {
+    title: text(value.title, 200) || "เพลงที่ผ่านมา",
+    singer: text(value.singer, 32) || "ผู้ร้อง",
+    average: Math.max(0, Math.min(SCORE_MAX, Math.round(average * 10) / 10)),
+    count: Math.min(count, MAX_QUEUE),
   };
 }
 
@@ -321,6 +520,27 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
     }
     case "notes":
       return typeof value.text === "string" ? { kind: "notes", text: value.text.slice(0, MAX_NOTES) } : null;
+    case "queueLimit":
+      return typeof value.count === "number" ? { kind: "queueLimit", count: value.count } : null;
+    case "queueOrder": {
+      const order = QUEUE_ORDERS.find((option) => option === value.value);
+      return order ? { kind: "queueOrder", value: order } : null;
+    }
+    case "game": {
+      const game = PARTY_GAMES.find((option) => option === value.value);
+      return game ? { kind: "game", value: game } : null;
+    }
+    case "scoring":
+      return typeof value.enabled === "boolean" ? { kind: "scoring", enabled: value.enabled } : null;
+    case "vote": {
+      // Who voted comes from the envelope the host trusts, never from the payload.
+      const itemId = text(value.itemId, 64);
+      return itemId ? { kind: "vote", itemId } : null;
+    }
+    case "score":
+      return typeof value.value === "number" ? { kind: "score", value: value.value } : null;
+    case "bomb":
+      return { kind: "bomb" };
     default:
       return null;
   }

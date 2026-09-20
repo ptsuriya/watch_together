@@ -47,9 +47,21 @@ People usually scan the QR on the host screen with their phone camera. The home 
 
 The host can hand the run of the room to anyone in it: open the people dialog (the QR button) and press the shield next to a name. A co-host gets the queue controls and the room's settings — crossfade, notes, messages, who may change the key — everywhere they are, including their phone. Only the host hands this out or takes it back, and the host still decides it: every request goes through the host's page, which checks who asked before applying it.
 
+## Party games
+
+**เกม & คิว** next to the queue holds the rules of the night, and only the host or a co-host may set them.
+
+- **Per-person queue limit** — 1, 2, 3, 5 or unlimited songs waiting per guest. Hosts and co-hosts are exempt. The host's page counts what each member already has queued and, when someone is over, sends that one person a note back instead of queueing the song.
+- **What plays next** — in order, at random (the shared screen says "สุ่มจากคิว" instead of naming the next song, so it stays a surprise), or by vote: every row gets a thumbs-up, one per person, and the most-wanted song goes next.
+- **Mic bomb** — the room hands the mic to someone at random and gives them 60 seconds to find a song; whatever they queue jumps to the front. Their phone counts down, the TV shows whose turn it is, and the room picks someone else next time.
+- **Blind karaoke** — every song queued is handed to a different person to sing. The queue and the TV say who sings, not who picked it.
+- **Scoring** — everyone rates the song playing from 1 to 5 stars, changeable until it ends. The shared screen shows the running average, then a result card for a few seconds after the song ends.
+
+The host's page is the referee: votes and scores count by the member id on the envelope, never by anything the sender puts in the payload, and a guest cannot aim the mic bomb at anyone.
+
 ## Crossfade
 
-Every mode keeps two YouTube players. When a song is within the crossfade of its end and something is queued, the next song starts on the second player while the first fades out; a manual skip uses a short 1.5 s fade instead. The host picks 0 (off), 3, 6 or 10 seconds next to the queue, and the setting travels with the room state so guests fade at the same time. iOS ignores `setVolume`, so players there switch without an overlap.
+Every mode keeps two YouTube players. When a song is within the crossfade of its end and something is queued, the next song starts on the second player while the first fades out; a manual skip uses a short 1.5 s fade instead. The host picks 0 (off), 3, 6 or 10 seconds next to the queue, and the setting travels with the room state so guests fade at the same time. iOS ignores `setVolume`, so players there switch without an overlap — the crossfade setting says so on those devices.
 
 ## Emoji bomb and flying messages
 

@@ -3,6 +3,7 @@
 import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
 import { ChatBar, type ChatMessage } from "./chat";
+import { PartyButton, ScorePad, SpotlightBanner } from "./party";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel, NotesToggle } from "./room-panels";
@@ -18,6 +19,7 @@ export function WatchRoom({
   onInvite,
   onChat,
   onReact,
+  onOpenParty,
 }: {
   model: RoomModel;
   player: ReactNode;
@@ -26,6 +28,7 @@ export function WatchRoom({
   onInvite: () => void;
   onChat: (text: string) => void;
   onReact: (emoji: string) => void;
+  onOpenParty: () => void;
 }) {
   const { state, isHost, canManage, dispatch, members, selfId, selfName } = model;
   const memberCount = members.length || 1;
@@ -50,6 +53,9 @@ export function WatchRoom({
           </div>
           <PlaybackButtons state={state} dispatch={dispatch} />
         </div>
+        {state.spotlight && (
+          <SpotlightBanner spotlight={state.spotlight} mine={state.spotlight.memberId === selfId} place="phone" />
+        )}
         <div className="watch-social">
           {state.chat && <ChatBar onSend={onChat} compact />}
           <EmojiPad onSend={onReact} compact />
@@ -86,11 +92,21 @@ export function WatchRoom({
               <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
               <NotesToggle enabled={state.notesOn} dispatch={dispatch} />
               <ChatToggle enabled={state.chat} dispatch={dispatch} />
+              <PartyButton state={state} onOpen={onOpenParty} />
             </div>
           )}
         </div>
+        <ScorePad state={state} selfId={selfId} dispatch={dispatch} />
         <AddVideoForm onAdd={model.addVideo} />
-        <QueueList items={state.queue} selfName={selfName} isHost={canManage} dispatch={dispatch} emptyText="ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย" />
+        <QueueList
+          items={state.queue}
+          selfName={selfName}
+          selfId={selfId}
+          isHost={canManage}
+          voting={state.queueOrder === "vote"}
+          dispatch={dispatch}
+          emptyText="ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย"
+        />
       </section>
     </div>
   );

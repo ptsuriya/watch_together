@@ -4,6 +4,7 @@ import { ClipboardPaste, ListPlus, Pause, Play, Search, SkipForward, Trash } fro
 import { useEffect, useId, useState } from "react";
 import type { QueueItem, RoomIntent, RoomState } from "../../lib/room-state";
 import { parseYouTubeId } from "../../lib/youtube";
+import { VoteButton } from "./party";
 import type { AddVideoResult } from "./room-model";
 import { EmptyNote, VideoThumb } from "./ui";
 
@@ -151,6 +152,8 @@ export function QueueList({
   dispatch,
   limit,
   emptyText = "ยังไม่มีคิวถัดไป",
+  selfId = null,
+  voting = false,
 }: {
   items: QueueItem[];
   selfName: string;
@@ -158,6 +161,10 @@ export function QueueList({
   dispatch: (intent: RoomIntent) => void;
   limit?: number;
   emptyText?: string;
+  /** Needed to show which votes are yours. */
+  selfId?: string | null;
+  /** Vote mode: every row gets a vote button. */
+  voting?: boolean;
 }) {
   if (items.length === 0) return <EmptyNote art="clipboard">{emptyText}</EmptyNote>;
   const shown = limit ? items.slice(0, limit) : items;
@@ -172,19 +179,22 @@ export function QueueList({
               <strong>{item.title}</strong>
               <small>
                 {item.addedBy === selfName && <em className="tag">ของคุณ</em>}
-                {item.addedBy}
+                {item.singer ? <><em className="tag tag-singer">ร้อง</em>{item.singer}</> : item.addedBy}
               </small>
             </span>
-            {isHost && (
-              <span className="queue-actions">
-                <button type="button" className="icon-btn" onClick={() => dispatch({ kind: "jump", itemId: item.id })} aria-label={`เล่น ${item.title} ตอนนี้`} title="เล่นตอนนี้">
-                  <Play size={16} aria-hidden="true" />
-                </button>
-                <button type="button" className="icon-btn" onClick={() => dispatch({ kind: "remove", itemId: item.id })} aria-label={`เอา ${item.title} ออกจากคิว`} title="เอาออก">
-                  <Trash size={16} aria-hidden="true" />
-                </button>
-              </span>
-            )}
+            <span className="queue-actions">
+              {voting && <VoteButton item={item} selfId={selfId} dispatch={dispatch} />}
+              {isHost && (
+                <>
+                  <button type="button" className="icon-btn" onClick={() => dispatch({ kind: "jump", itemId: item.id })} aria-label={`เล่น ${item.title} ตอนนี้`} title="เล่นตอนนี้">
+                    <Play size={16} aria-hidden="true" />
+                  </button>
+                  <button type="button" className="icon-btn" onClick={() => dispatch({ kind: "remove", itemId: item.id })} aria-label={`เอา ${item.title} ออกจากคิว`} title="เอาออก">
+                    <Trash size={16} aria-hidden="true" />
+                  </button>
+                </>
+              )}
+            </span>
           </li>
         ))}
       </ol>

@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  createRoomState, hasContent, isManager, MANAGER_INTENTS, mayChangeKey, reduceRoom, sanitizeChat, sanitizeGuestIntent,
-  sanitizeReaction, sanitizeState,
+  BOMB_SECONDS, createRoomState, hasContent, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
+  sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -14,6 +14,7 @@ import { lookupVideo, parseYouTubeId } from "../lib/youtube";
 import { HomeScreen } from "./components/home-screen";
 import { ChatFlights, CHAT_FLIGHT_MS, CHAT_LANES, CHAT_LOG_SIZE, type ChatMessage, pickFlightTop } from "./components/chat";
 import { KaraokeSetupDialog } from "./components/key-helper";
+import { PartyDialog } from "./components/party";
 import { BURST_LIFETIME_MS, type EmojiBurst, EmojiRain, makeBurst } from "./components/reactions";
 import { RemoteRoom, WaitingRoom } from "./components/remote-room";
 import type { AddVideoResult, RoomModel, Toast } from "./components/room-model";
@@ -35,7 +36,7 @@ const MAX_BURSTS = 8;
 const CHAT_COOLDOWN_MS = 1500;
 const SKIP_AFTER_ERROR_MS = 2500;
 
-type DialogKind = "invite" | "name" | "notes" | "karaoke";
+type DialogKind = "invite" | "name" | "notes" | "karaoke" | "party";
 
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -97,6 +98,12 @@ export default function RoomClient({
   const chatSentAtRef = useRef(0);
   const keyHelperRef = useRef(false);
   const karaokeSetupShownRef = useRef(false);
+  const membersRef = useRef<RoomMember[]>([]);
+  /** Host clock: when the mic bomb runs out. The state carries only the seconds left, so every screen agrees. */
+  const spotlightUntilRef = useRef(0);
+  const lastBombRef = useRef<string | null>(null);
+  /** Set once the picker below exists; dispatch is defined before it. */
+  const startBombRef = useRef<() => void>(() => undefined);
   const supabaseConfig = useMemo(() => ({ url: supabaseUrl, key: supabaseKey }), [supabaseKey, supabaseUrl]);
   const realtimeConfigured = isSupabaseConfigured(supabaseConfig);
 
@@ -119,9 +126,12 @@ export default function RoomClient({
     sessionRef.current ||= crypto.randomUUID().slice(0, 8);
     const current = stateRef.current;
     const position = current.nowPlaying ? timeRef.current?.() ?? current.position : 0;
+    const spotlight = current.spotlight
+      ? { ...current.spotlight, seconds: Math.max(0, Math.ceil((spotlightUntilRef.current - Date.now()) / 1000)) }
+      : null;
     broadcastRef.current({
       kind: "state",
-      state: { ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current },
+      state: { ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current, spotlight },
     });
   }, []);
 
@@ -159,7 +169,10 @@ export default function RoomClient({
 
   const dispatch = useCallback((intent: RoomIntent) => {
     if (isHostRef.current || !realtimeConfigured) {
-      commit(intent);
+      // The room, not the sender, decides who the mic lands on and whose vote this is.
+      if (intent.kind === "bomb") startBombRef.current();
+      else if (intent.kind === "vote" || intent.kind === "score") commit({ ...intent, memberId: selfIdRef.current ?? "host" });
+      else commit(intent);
       return;
     }
     // Broadcasts sent while the channel is down are dropped, so say so instead of letting the tap vanish.
@@ -205,6 +218,37 @@ export default function RoomClient({
     if (realtimeConfigured) broadcastRef.current({ kind: "react", emoji, from });
   }, [pushBurst, realtimeConfigured]);
 
+  /** Blind karaoke: someone else in the room gets the song, so they sing what they did not choose. */
+  const pickSinger = useCallback((exceptId: string | null | undefined) => {
+    const others = membersRef.current.filter((member) => member.id !== exceptId);
+    return others.length > 0 ? others[Math.floor(Math.random() * others.length)].name : undefined;
+  }, []);
+
+  /** Stamps a song with who queued it, and in blind karaoke with who has to sing it. */
+  const dressItem = useCallback((item: QueueItem, fromId: string | undefined): QueueItem => {
+    const singer = stateRef.current.game === "blind" ? pickSinger(fromId) : undefined;
+    return { ...item, ...(fromId ? { addedById: fromId } : {}), ...(singer ? { singer } : {}) };
+  }, [pickSinger]);
+
+  /** Hands the mic to someone at random, with a countdown to find one song. */
+  const startBomb = useCallback(() => {
+    const room = membersRef.current;
+    const pool = room.filter((member) => member.id !== lastBombRef.current);
+    const picked = (pool.length > 0 ? pool : room)[Math.floor(Math.random() * (pool.length > 0 ? pool.length : room.length))];
+    if (!picked) {
+      pushToast("ยังไม่มีใครในห้องให้สุ่ม ชวนเพื่อนสแกน QR เข้ามาก่อน");
+      return;
+    }
+    lastBombRef.current = picked.id;
+    spotlightUntilRef.current = Date.now() + BOMB_SECONDS * 1000;
+    commit({ kind: "bomb", memberId: picked.id, name: picked.name, seconds: BOMB_SECONDS });
+    pushToast(`ระเบิดไมค์ลงที่ ${picked.name}`);
+  }, [commit, pushToast]);
+
+  useEffect(() => {
+    startBombRef.current = startBomb;
+  }, [startBomb]);
+
   const addVideo = useCallback(async (input: string): Promise<AddVideoResult> => {
     const videoId = parseYouTubeId(input);
     if (!videoId) return { ok: false, message: "ไม่พบลิงก์ YouTube ในข้อความนี้" };
@@ -225,7 +269,7 @@ export default function RoomClient({
       addedBy: selfNameRef.current,
     };
     if (isHostRef.current || !realtimeConfigured) {
-      const next = commit({ kind: "add", item });
+      const next = commit({ kind: "add", item: dressItem(item, selfIdRef.current ?? undefined) });
       if (next.nowPlaying?.id === item.id) return { ok: true, message: "เริ่มเล่นแล้ว" };
       const index = next.queue.findIndex((queued) => queued.id === item.id);
       return index >= 0 ? { ok: true, message: `เข้าคิวแล้ว ลำดับที่ ${index + 1}` } : { ok: false, message: "คิวเต็มแล้ว" };
@@ -234,7 +278,7 @@ export default function RoomClient({
     pendingAddsRef.current.add(item.id);
     broadcastRef.current({ kind: "intent", intent: { kind: "add", item } });
     return { ok: true, message: "ส่งแล้ว รอเข้าคิว…" };
-  }, [commit, realtimeConfigured]);
+  }, [commit, dressItem, realtimeConfigured]);
 
   const confirmPendingAdds = useCallback((next: RoomState) => {
     for (const id of pendingAddsRef.current) {
@@ -262,12 +306,39 @@ export default function RoomClient({
         if (intent.kind === "notes" && !state.notesShared && !manager) return;
         // The host decides who may change the key: only the host, only whoever queued the song, or anyone.
         if (intent.kind === "key" && !manager && !mayChangeKey(state, fromName)) return;
+        if (intent.kind === "bomb") {
+          startBomb();
+          return;
+        }
+        // Voting and rating only count when the room knows who sent them.
+        if (intent.kind === "vote" || intent.kind === "score") {
+          if (fromId) commit({ ...intent, memberId: fromId });
+          return;
+        }
+        if (intent.kind === "add") {
+          const waiting = queuedBy(state, fromId);
+          if (!manager && state.queueLimit > 0 && waiting >= state.queueLimit && fromId) {
+            broadcastRef.current({
+              kind: "notice",
+              to: fromId,
+              text: `ห้องนี้ให้คนละ ${state.queueLimit} เพลงในคิว รอเพลงของคุณเล่นก่อนนะ`,
+            });
+            return;
+          }
+          commit({ kind: "add", item: dressItem(intent.item, fromId) });
+          return;
+        }
         commit(intent);
         return;
       }
       case "react": {
         const emoji = sanitizeReaction(event.emoji);
         if (emoji) pushBurst(emoji, sanitizeChat(event.from).slice(0, 32) || "ใครบางคน");
+        return;
+      }
+      case "notice": {
+        // A word from the host to one member: their own screen is the only one that shows it.
+        if (event.to === selfIdRef.current) pushToast(sanitizeChat(event.text) || "ห้องไม่รับคำขอนี้");
         return;
       }
       case "chat": {
@@ -309,7 +380,7 @@ export default function RoomClient({
         return;
       }
     }
-  }, [broadcastStateNow, commit, confirmPendingAdds, pushBurst, pushMessage, replaceState]);
+  }, [broadcastStateNow, commit, confirmPendingAdds, dressItem, pushBurst, pushMessage, pushToast, replaceState, startBomb]);
 
   const handleResync = useCallback(({ isHost: selfIsHost }: RoomSelf) => {
     if (!selfIsHost) broadcastRef.current({ kind: "state:request" });
@@ -367,7 +438,8 @@ export default function RoomClient({
     broadcastRef.current = broadcast;
     selfNameRef.current = selfName;
     selfIdRef.current = selfId;
-  }, [broadcast, isHost, selfId, selfName, status]);
+    membersRef.current = members;
+  }, [broadcast, isHost, members, selfId, selfName, status]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -386,6 +458,27 @@ export default function RoomClient({
     const intervalId = window.setInterval(broadcastStateNow, interval);
     return () => window.clearInterval(intervalId);
   }, [broadcastStateNow, isHost, state.isPlaying, state.mode, status]);
+
+  // The mic bomb ends when nobody answers it.
+  useEffect(() => {
+    if (!isHost || !state.spotlight) return;
+    const intervalId = window.setInterval(() => {
+      if (Date.now() < spotlightUntilRef.current) {
+        scheduleBroadcast(BROADCAST_DELAY_MS);
+        return;
+      }
+      pushToast(`หมดเวลาของ ${stateRef.current.spotlight?.name ?? "คนที่ถูกสุ่ม"}`);
+      commit({ kind: "spotlightOff" });
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [commit, isHost, pushToast, scheduleBroadcast, state.spotlight]);
+
+  // Everyone looks at the score for a few seconds, then the room moves on.
+  useEffect(() => {
+    if (!isHost || !state.lastScore) return;
+    const timeoutId = window.setTimeout(() => commit({ kind: "scoreClear" }), SCORE_SHOW_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [commit, isHost, state.lastScore]);
 
   useEffect(() => () => window.clearTimeout(broadcastTimerRef.current), []);
 
@@ -538,6 +631,7 @@ export default function RoomClient({
         messages={messages}
         onExpandNotes={() => setDialog("notes")}
         onInvite={() => setDialog("invite")}
+        onOpenParty={() => setDialog("party")}
         onChat={sendChat}
         onReact={sendReaction}
       />
@@ -555,6 +649,7 @@ export default function RoomClient({
         onReact={sendReaction}
         onChat={sendChat}
         onOpenKaraokeSetup={() => setDialog("karaoke")}
+        onOpenParty={() => setDialog("party")}
       />
     );
   } else {
@@ -565,6 +660,7 @@ export default function RoomClient({
         onRename={() => setDialog("name")}
         onReact={sendReaction}
         onChat={sendChat}
+        onOpenParty={() => setDialog("party")}
       />
     );
   }
@@ -587,6 +683,7 @@ export default function RoomClient({
       {dialog === "invite" && <InviteDialog model={model} onClose={() => setDialog(null)} />}
       {dialog === "name" && <NameDialog name={listenerName} onSave={saveName} onClose={() => setDialog(null)} />}
       {dialog === "karaoke" && <KaraokeSetupDialog status={keyHelperStatus} onClose={() => setDialog(null)} />}
+      {dialog === "party" && <PartyDialog model={model} onClose={() => setDialog(null)} />}
       {dialog === "notes" && (
         <NotesDialog notes={state.notes} canManage={canManage} shared={state.notesShared} dispatch={dispatch} onClose={() => setDialog(null)} />
       )}

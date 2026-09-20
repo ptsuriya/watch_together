@@ -46,6 +46,16 @@ export async function lookupVideo(videoId: string): Promise<VideoLookup> {
 // The subset of the YouTube IFrame Player API this app uses.
 // https://developers.google.com/youtube/iframe_api_reference
 
+/**
+ * Crossfading needs two players at different volumes, and iOS hands volume to the hardware buttons only,
+ * so there both songs would play at full blast.
+ */
+export function canCrossfade() {
+  if (typeof navigator === "undefined") return false;
+  const agent = navigator.userAgent;
+  return !/iPhone|iPad|iPod/.test(agent) && !(/Macintosh/.test(agent) && navigator.maxTouchPoints > 1);
+}
+
 export const PlayerState = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 } as const;
 
 export type YouTubePlayer = {

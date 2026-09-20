@@ -1,10 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { formatKey } from "../../lib/room-state";
+import { formatKey, peekNext, singerOf } from "../../lib/room-state";
 import type { HelperStatus } from "../../lib/karaoke-key";
 import { ChatFlights, type ChatMessage } from "./chat";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
+import { PartyButton, ScoreBoard, SpotlightBanner } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { ChatToggle, CrossfadeSelect, KeyControl, KeyControlSelect, RoomQr } from "./room-panels";
@@ -28,6 +29,7 @@ export function TvRoom({
   onReact,
   onChat,
   onOpenKaraokeSetup,
+  onOpenParty,
 }: {
   model: RoomModel;
   player: ReactNode;
@@ -39,8 +41,10 @@ export function TvRoom({
   onReact: (emoji: string) => void;
   onChat: (text: string) => void;
   onOpenKaraokeSetup: () => void;
+  onOpenParty: () => void;
 }) {
-  const { state, canManage, dispatch, selfName, inviteUrl, roomCode } = model;
+  const { state, canManage, dispatch, selfId, selfName, inviteUrl, roomCode } = model;
+  const upNext = peekNext(state);
   const karaoke = state.mode === "karaoke";
   const scanText = karaoke ? "สแกนเพื่อขอเพลงและปรับคีย์" : "สแกนเพื่อเพิ่มเพลง";
 
@@ -61,13 +65,15 @@ export function TvRoom({
             </div>
           </div>
         )}
-        {state.nowPlaying && state.queue[0] && (
+        {state.nowPlaying && state.queue.length > 0 && (
           <p className="tv-next">
             <small>ต่อไป</small>
-            <strong>{state.queue[0].title}</strong>
-            <span>{karaoke ? "ร้องโดย" : "โดย"} {state.queue[0].addedBy}</span>
+            <strong>{upNext ? upNext.title : "สุ่มจากคิว"}</strong>
+            <span>{upNext ? `${karaoke ? "ร้องโดย" : "โดย"} ${singerOf(upNext)}` : `ลุ้นกัน ${state.queue.length} เพลงในคิว`}</span>
           </p>
         )}
+        {state.spotlight && <SpotlightBanner spotlight={state.spotlight} mine={false} place="stage" />}
+        <ScoreBoard state={state} />
         <ToastStack toasts={toasts} placement="stage" />
         {karaoke && state.nowPlaying && (
           <p className={`key-badge${state.key !== 0 ? " is-shifted" : ""}`} aria-live="polite">
@@ -107,8 +113,18 @@ export function TvRoom({
           <div className="room-settings">
             <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
             <ChatToggle enabled={state.chat} dispatch={dispatch} />
+            <PartyButton state={state} onOpen={onOpenParty} />
           </div>
-          <QueueList items={state.queue} selfName={selfName} isHost={canManage} dispatch={dispatch} limit={UP_NEXT_LIMIT} emptyText="ยังไม่มีเพลงต่อคิว" />
+          <QueueList
+            items={state.queue}
+            selfName={selfName}
+            selfId={selfId}
+            isHost={canManage}
+            voting={state.queueOrder === "vote"}
+            dispatch={dispatch}
+            limit={UP_NEXT_LIMIT}
+            emptyText="ยังไม่มีเพลงต่อคิว"
+          />
           <AddVideoForm onAdd={model.addVideo} compact label="เพิ่มลิงก์ YouTube จากเครื่องนี้" />
         </section>
 
