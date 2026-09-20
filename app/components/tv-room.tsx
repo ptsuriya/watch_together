@@ -8,7 +8,7 @@ import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { PartyButton, ScoreBoard, SpotlightBanner } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
-import { ChatToggle, CrossfadeSelect, KeyControl, KeyControlSelect, RoomQr } from "./room-panels";
+import { KeyControl, RoomQr } from "./room-panels";
 import type { RoomModel, Toast } from "./room-model";
 import { Art, ToastStack } from "./ui";
 
@@ -102,17 +102,13 @@ export function TvRoom({
         <section className="card side-now">
           <small>{state.nowPlaying ? (state.isPlaying ? "กำลังเล่น" : "หยุดชั่วคราว") : "ยังไม่มีเพลง"}</small>
           <strong>{state.nowPlaying?.title ?? "รอเพลงแรกจากรีโมท"}</strong>
-          {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {state.nowPlaying.addedBy}</span>}
+          {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
           <PlaybackButtons state={state} dispatch={dispatch} />
         </section>
 
         <section className="card side-queue" aria-labelledby="tv-queue-title">
           <div className="card-head">
             <h2 id="tv-queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
-          </div>
-          <div className="room-settings">
-            <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
-            <ChatToggle enabled={state.chat} dispatch={dispatch} />
             <PartyButton state={state} onOpen={onOpenParty} />
           </div>
           <QueueList
@@ -131,7 +127,6 @@ export function TvRoom({
         {karaoke && (
           <section className="card side-key" aria-label="คีย์">
             <KeyControl value={state.key} dispatch={dispatch} />
-            <KeyControlSelect value={state.keyControl} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </section>

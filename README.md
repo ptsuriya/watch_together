@@ -56,7 +56,7 @@ If the room is on a call — someone shares their screen in Discord, Meet or Zoo
 
 ## Party games
 
-**เกม & คิว** next to the queue holds the rules of the night, and only the host or a co-host may set them.
+**ตั้งค่าห้อง** beside the queue holds everything the room is set to — the night's rules, the game, and what the screens show. It is one button rather than a row of chips, and only the host or a co-host may open it to change anything.
 
 - **Per-person queue limit** — 1, 2, 3, 5 or unlimited songs waiting per guest. Hosts and co-hosts are exempt. The host's page counts what each member already has queued and, when someone is over, sends that one person a note back instead of queueing the song.
 - **What plays next** — in order, at random (the shared screen says "สุ่มจากคิว" instead of naming the next song, so it stays a surprise), or by vote: every row gets a thumbs-up, one per person, and the most-wanted song goes next.

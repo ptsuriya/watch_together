@@ -1,12 +1,13 @@
 "use client";
 
-import { Bomb, Dices, ListOrdered, Star, ThumbsUp, Trophy } from "lucide-react";
+import { Bomb, Dices, ListOrdered, SlidersHorizontal, Star, ThumbsUp, Trophy } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
-  PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, scoreAverage, SCORE_MAX,
+  isKaraoke, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, scoreAverage, SCORE_MAX,
   type PartyGame, type QueueItem, type QueueOrder, type RoomIntent, type RoomState, type Spotlight,
 } from "../../lib/room-state";
 import type { RoomModel } from "./room-model";
+import { ChatToggle, CrossfadeSelect, KeyControlSelect, NotesToggle } from "./room-panels";
 import { Art, Dialog } from "./ui";
 
 const QUEUE_ORDER_LABELS: Record<QueueOrder, { name: string; hint: string }> = {
@@ -25,7 +26,7 @@ function timeLeft(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-/** The room's party settings: who may queue how much, what plays next, and which game is on. */
+/** Everything the host sets for the room: the queue's rules, the game, and what the screens show. */
 export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () => void }) {
   const { state, canManage, dispatch } = model;
   const limitId = useId();
@@ -35,16 +36,16 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
   if (!canManage) {
     return (
       <Dialog labelledBy="party-title" onClose={onClose}>
-        <h2 id="party-title" className="dialog-title">เกม &amp; คิว</h2>
-        <p className="dialog-text">หัวห้องเป็นคนตั้งค่าส่วนนี้ ตอนนี้ห้องใช้ {QUEUE_ORDER_LABELS[state.queueOrder].name.toLowerCase()} และเกม{GAME_LABELS[state.game].name}</p>
+        <h2 id="party-title" className="dialog-title">ตั้งค่าห้อง</h2>
+        <p className="dialog-text">หัวห้องเป็นคนตั้งค่าส่วนนี้ ตอนนี้ห้องใช้{QUEUE_ORDER_LABELS[state.queueOrder].name} และเกม{GAME_LABELS[state.game].name}</p>
       </Dialog>
     );
   }
 
   return (
     <Dialog labelledBy="party-title" onClose={onClose}>
-      <h2 id="party-title" className="dialog-title">เกม &amp; คิว</h2>
-      <p className="dialog-text">ตั้งกติกาของห้องนี้ ทุกเครื่องเห็นผลทันที</p>
+      <h2 id="party-title" className="dialog-title">ตั้งค่าห้อง</h2>
+      <p className="dialog-text">ทุกเครื่องในห้องเห็นผลทันที</p>
 
       <div className="party-settings">
         <div className="party-row">
@@ -107,19 +108,30 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           <span><Star size={16} aria-hidden="true" /> ให้คะแนนเพลงที่กำลังเล่น</span>
           <small>ทุกคนให้ดาวได้คนละครั้ง ห้องเห็นคะแนนรวมตอนเพลงจบ</small>
         </label>
+
+        <div className="party-row">
+          <span className="party-row-title">จอและเสียง</span>
+          <div className="party-chips">
+            <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
+            <ChatToggle enabled={state.chat} dispatch={dispatch} />
+            {/* Only the watch layout has a notes panel to hide. */}
+            {state.mode === "watch" && <NotesToggle enabled={state.notesOn} dispatch={dispatch} />}
+          </div>
+          {isKaraoke(state.mode) && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
+        </div>
       </div>
       <Art name="party" className="dialog-bear" sizes="96px" />
     </Dialog>
   );
 }
 
-/** Opens the party settings from a room's settings row. */
+/** The one way into the room's settings, so nothing else has to sit beside the queue. */
 export function PartyButton({ state, onOpen }: { state: RoomState; onOpen: () => void }) {
   const playing = state.game !== "off" || state.queueOrder !== "line" || state.scoring || state.queueLimit > 0;
   return (
     <button type="button" className={`chip-btn${playing ? " is-on" : ""}`} onClick={onOpen}>
-      <Bomb size={16} aria-hidden="true" />
-      เกม &amp; คิว
+      {playing ? <Bomb size={16} aria-hidden="true" /> : <SlidersHorizontal size={16} aria-hidden="true" />}
+      ตั้งค่าห้อง
       {playing && <em className="chip-dot" aria-hidden="true" />}
     </button>
   );

@@ -10,7 +10,7 @@ import { PartyButton, ScorePad, SpotlightBanner } from "./party";
 import { SyncOffsetControl } from "./sync-offset";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
-import { ChatToggle, CrossfadeSelect, KeyControl, KeyControlSelect, MemberList, NotesPanel, NotesToggle } from "./room-panels";
+import { KeyControl, MemberList, NotesPanel } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art } from "./ui";
 
@@ -83,7 +83,6 @@ export function WatchRoom({
                 {state.keyControl === "owner" ? "โฮสต์ให้เฉพาะคนที่ขอเพลงนี้ปรับคีย์ได้" : "โฮสต์ปรับคีย์เอง"}
               </p>
             )}
-            {canManage && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </div>
@@ -120,14 +119,7 @@ export function WatchRoom({
       <section className="card queue-card" aria-labelledby="queue-title">
         <div className="card-head">
           <h2 id="queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
-          {canManage && (
-            <div className="room-settings">
-              <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
-              {!karaoke && <NotesToggle enabled={state.notesOn} dispatch={dispatch} />}
-              <ChatToggle enabled={state.chat} dispatch={dispatch} />
-              <PartyButton state={state} onOpen={onOpenParty} />
-            </div>
-          )}
+          {canManage && <PartyButton state={state} onOpen={onOpenParty} />}
         </div>
         <ScorePad state={state} selfId={selfId} dispatch={dispatch} />
         <AddVideoForm onAdd={model.addVideo} />

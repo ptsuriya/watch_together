@@ -8,7 +8,7 @@ import { PartyButton, ScorePad, SpotlightBanner } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
 import { EmojiPad } from "./reactions";
 import { MODE_LABELS, type RoomModel } from "./room-model";
-import { ChatToggle, CrossfadeSelect, KeyControl, KeyControlSelect, NotesToggle } from "./room-panels";
+import { KeyControl } from "./room-panels";
 import { Art, VideoThumb } from "./ui";
 
 /** Remote and karaoke, guest side: a phone remote for the host's screen. */
@@ -73,13 +73,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
         <section className="card remote-manage" aria-labelledby="remote-manage-title">
           <h2 id="remote-manage-title">คุณเป็นหัวห้องร่วม</h2>
           <p className="hint">จัดคิวและตั้งค่าห้องได้เหมือนโฮสต์</p>
-          <div className="room-settings">
-            <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
-            <NotesToggle enabled={state.notesOn} dispatch={dispatch} />
-            <ChatToggle enabled={state.chat} dispatch={dispatch} />
-            <PartyButton state={state} onOpen={onOpenParty} />
-          </div>
-          {karaoke && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
+          <PartyButton state={state} onOpen={onOpenParty} />
         </section>
       )}
 

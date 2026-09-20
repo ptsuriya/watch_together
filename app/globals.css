@@ -704,6 +704,7 @@ select.field { padding-right: 8px; }
 .chat-log b { color: var(--amber-deep); }
 .chat-log-empty { display: flex; align-items: center; gap: 8px; color: var(--clay); font-size: 14px; }
 .room-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.card-head .chip-btn { margin-left: auto; }
 .key-locked {
   padding: 12px; border: 2px dashed var(--bark); border-radius: 16px;
   background: rgba(253, 246, 236, 0.6); color: var(--cocoa); font-size: 15px; text-align: center;
@@ -945,7 +946,9 @@ select.field { padding-right: 8px; }
 
 .party-settings { display: grid; gap: 16px; margin-top: 4px; }
 .party-row { display: grid; gap: 6px; }
-.party-row label { display: flex; align-items: center; gap: 6px; color: var(--bark); font-size: 15px; font-weight: 700; }
+.party-row label, .party-row-title { display: flex; align-items: center; gap: 6px; color: var(--bark); font-size: 15px; font-weight: 700; }
+.party-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.party-row .crossfade-select { flex: none; }
 .party-row small, .party-check small { color: var(--clay); font-size: 13px; }
 .party-check { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; cursor: pointer; }
 .party-check input { width: 22px; height: 22px; accent-color: var(--amber); }
