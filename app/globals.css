@@ -793,7 +793,7 @@ select.field { padding-right: 8px; }
 .remote-key { display: grid; gap: 12px; padding: 18px; background: var(--gold); }
 .remote-key h2 { justify-content: center; }
 .remote-key .key-reset { color: var(--bark); }
-.remote-add, .remote-queue, .remote-emoji { display: grid; gap: 14px; padding: 18px; }
+.remote-add, .remote-queue, .remote-emoji, .remote-chat { display: grid; gap: 14px; padding: 18px; }
 .remote-emoji h2 { justify-content: center; }
 .remote-add .add-form + .add-form { padding-top: 12px; border-top: 2px dashed var(--line); }
 .remote-add .add-row .field { flex-basis: 100%; }
