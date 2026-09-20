@@ -79,7 +79,20 @@ export type RoomState = {
   scores: Record<string, number>;
   /** The result card for the song that just ended; the host clears it after a few seconds. */
   lastScore: ScoreResult | null;
+  /**
+   * Seconds the host's own screen runs ahead of the room. The host's ears can be late — Bluetooth headphones, a
+   * soundbar — and only the other screens can move to meet them, so this travels with the room.
+   */
+  hostOffset: number;
 };
+
+/** How far any one screen may sit from the room, in seconds. */
+export const MAX_OFFSET = 5;
+
+export function clampOffset(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, Math.round(value * 100) / 100));
+}
 
 export type QueueOrder = "line" | "random" | "vote";
 export const QUEUE_ORDERS = ["line", "random", "vote"] as const satisfies readonly QueueOrder[];
@@ -180,6 +193,7 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
     notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
     cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", scoring: false, spotlight: null, scores: {}, lastScore: null,
+    hostOffset: 0,
   };
 }
 
@@ -458,6 +472,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     spotlight: sanitizeSpotlight(value.spotlight),
     scores: sanitizeScores(value.scores),
     lastScore: sanitizeScoreResult(value.lastScore),
+    hostOffset: clampOffset(value.hostOffset),
   };
 }
 

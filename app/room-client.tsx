@@ -98,6 +98,8 @@ export default function RoomClient({
   const messageIdRef = useRef(0);
   const chatSentAtRef = useRef(0);
   const keyHelperRef = useRef(false);
+  /** The host's own offset, sent with the room so the other screens can move to meet the host's ears. */
+  const hostOffsetRef = useRef(0);
   const karaokeSetupShownRef = useRef(false);
   const membersRef = useRef<RoomMember[]>([]);
   /** Host clock: when the mic bomb runs out. The state carries only the seconds left, so every screen agrees. */
@@ -132,7 +134,10 @@ export default function RoomClient({
       : null;
     broadcastRef.current({
       kind: "state",
-      state: { ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current, spotlight },
+      state: {
+        ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current, spotlight,
+        hostOffset: hostOffsetRef.current,
+      },
     });
   }, []);
 
@@ -445,6 +450,14 @@ export default function RoomClient({
     scheduleBroadcast(BROADCAST_DELAY_MS);
   }, [keyHelperStatus, scheduleBroadcast]);
 
+  // The host moved their own screen: tell the room at once, so every other screen steps to meet it.
+  useEffect(() => {
+    const mine = isHost ? syncOffset : 0;
+    if (hostOffsetRef.current === mine) return;
+    hostOffsetRef.current = mine;
+    if (isHost) scheduleBroadcast(BROADCAST_DELAY_MS);
+  }, [isHost, scheduleBroadcast, syncOffset]);
+
   useEffect(() => {
     isHostRef.current = isHost;
     connectedRef.current = status === "connected";
@@ -626,7 +639,7 @@ export default function RoomClient({
       semitones={isKaraoke(state.mode) && (isHost || state.mode === "singalong") ? state.key : undefined}
       onNearEnd={isHost ? handleNearEnd : undefined}
       follow={isHost ? undefined : follow}
-      offset={isHost ? 0 : syncOffset}
+      offset={isHost ? 0 : syncOffset - state.hostOffset}
       resume={isHost ? resume : undefined}
       timeRef={isHost ? timeRef : undefined}
       onPlayingChange={isHost ? handlePlayerPlaying : undefined}

@@ -915,6 +915,7 @@ select.field { padding-right: 8px; }
   border: 2px solid var(--line); border-radius: 16px; background: rgba(255, 240, 204, 0.55);
 }
 .watch-key .helper-note { margin: 0; }
+.helper-caveat { margin-top: -4px; color: var(--clay); font-size: 13px; }
 
 /* ---- Lining up with a shared screen ---- */
 

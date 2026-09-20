@@ -50,8 +50,15 @@ export function useSyncOffset() {
   return { offset, change };
 }
 
-/** Guests with their own player: line it up with a screen someone else is sharing, or with slow headphones. */
-export function SyncOffsetControl({ offset, onChange }: { offset: number; onChange: (value: number) => void }) {
+/**
+ * Line this screen up with the room. A guest moves their own player; the host cannot — every screen follows the
+ * host — so for the host the room moves instead, which is what late headphones on the host's head need.
+ */
+export function SyncOffsetControl({ offset, onChange, isHost = false }: {
+  offset: number;
+  onChange: (value: number) => void;
+  isHost?: boolean;
+}) {
   const sliderId = useId();
   return (
     <div className="sync-offset">
@@ -81,10 +88,12 @@ export function SyncOffsetControl({ offset, onChange }: { offset: number; onChan
       </div>
       <small>
         {offset === 0
-          ? "ไม่ตรงกับคนอื่น? ดูจอที่เขาแชร์แล้วภาพมาช้า เลื่อนซ้าย · ใส่หูฟังบลูทูธแล้วเสียงมาช้า เลื่อนขวา"
-          : offset > 0
-            ? `เครื่องนี้เล่นล่วงหน้าโฮสต์ ${formatOffset(offset)} — ค่านี้อยู่เฉพาะเครื่องนี้`
-            : `เครื่องนี้เล่นตามหลังโฮสต์ ${formatOffset(Math.abs(offset))} — ค่านี้อยู่เฉพาะเครื่องนี้`}
+          ? isHost
+            ? "ใส่หูฟังบลูทูธแล้วเสียงถึงหูช้ากว่าคนอื่น? เลื่อนขวา แล้วห้องจะเลื่อนมาตรงกับหูคุณเอง"
+            : "ไม่ตรงกับคนอื่น? ดูจอที่เขาแชร์แล้วภาพมาช้า เลื่อนซ้าย · ใส่หูฟังบลูทูธแล้วเสียงมาช้า เลื่อนขวา"
+          : isHost
+            ? `ห้องเล่น${offset > 0 ? "ตามหลัง" : "ล่วงหน้า"}จอนี้ ${formatOffset(Math.abs(offset))} — ขยับให้ตรงกับหูของคุณ`
+            : `เครื่องนี้เล่น${offset > 0 ? "ล่วงหน้า" : "ตามหลัง"}ห้อง ${formatOffset(Math.abs(offset))} — ค่านี้อยู่เฉพาะเครื่องนี้`}
       </small>
       <a className="sync-offset-help" href="/discord" target="_blank" rel="noopener noreferrer">
         <HelpCircle size={14} aria-hidden="true" /> วิธีดูด้วยกันผ่าน Discord

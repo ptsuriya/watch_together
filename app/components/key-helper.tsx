@@ -1,11 +1,39 @@
 "use client";
 
 import { Check, Copy, Download, RefreshCw, TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
-import { HELPER_PROBE_URL, HELPER_STORE_URL, HELPER_ZIP_URL, type HelperStatus } from "../../lib/karaoke-key";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import {
+  helperBrowser, HELPER_PROBE_URL, HELPER_STORE_URL, HELPER_ZIP_URL,
+  type HelperBrowser, type HelperStatus,
+} from "../../lib/karaoke-key";
 import { Art, Dialog } from "./ui";
 
-const EXTENSIONS_PAGE = "chrome://extensions";
+/** Every browser keeps its extensions somewhere else, and Firefox does not load folders at all. */
+const BROWSER_SETUP: Record<Exclude<HelperBrowser, "other">, { name: string; page: string; steps: string[]; note?: string }> = {
+  chrome: {
+    name: "Chrome",
+    page: "chrome://extensions",
+    steps: ["เปิด Developer mode ที่มุมขวาบน", "กด Load unpacked แล้วเลือกโฟลเดอร์ที่แตกไว้"],
+  },
+  edge: {
+    name: "Edge",
+    page: "edge://extensions",
+    steps: ["เปิด “โหมดนักพัฒนา” ที่แถบซ้าย", "กด “โหลดส่วนขยายที่แตกไฟล์แล้ว” แล้วเลือกโฟลเดอร์ที่แตกไว้"],
+  },
+  opera: {
+    name: "Opera",
+    page: "opera://extensions",
+    steps: ["เปิด Developer mode ที่มุมขวาบน", "กด Load unpacked แล้วเลือกโฟลเดอร์ที่แตกไว้"],
+  },
+  firefox: {
+    name: "Firefox",
+    page: "about:debugging#/runtime/this-firefox",
+    steps: ["กด “โหลดส่วนเสริมชั่วคราว…” (Load Temporary Add-on)", "เลือกไฟล์ .zip ที่โหลดมาได้เลย ไม่ต้องแตกไฟล์"],
+    note: "Firefox เก็บส่วนเสริมชั่วคราวไว้จนกว่าจะปิดเบราว์เซอร์ เปิดใหม่ต้องโหลดอีกครั้ง — และขั้นตอนนี้ยังไม่ได้ทดสอบเต็มที่ ถ้าเสียงไม่เปลี่ยนคีย์ ใช้ Chrome, Edge หรือ Opera ไปก่อน",
+  },
+};
+
+const noSubscribe = () => () => {};
 
 /** A hidden YouTube embed, loaded only so the extension can announce itself before the first song plays. */
 export function KeyHelperProbe({ active }: { active: boolean }) {
@@ -26,8 +54,8 @@ const STATUS_LINE: Record<HelperStatus, { text: string; device?: string; tone: s
     tone: "is-error",
   },
   unsupported: {
-    text: "จอนี้เปลี่ยนคีย์ไม่ได้ ต้องใช้ Chrome หรือ Edge บนคอมพิวเตอร์",
-    device: "เครื่องนี้ติดตั้งส่วนเสริมไม่ได้ จะได้ยินคีย์ต้นฉบับ (ใช้ Chrome หรือ Edge บนคอมถึงจะเปลี่ยนได้)",
+    text: "จอนี้เปลี่ยนคีย์ไม่ได้ ต้องใช้ Chrome, Edge, Opera หรือ Firefox บนคอมพิวเตอร์",
+    device: "เครื่องนี้ติดตั้งส่วนเสริมไม่ได้ จะได้ยินคีย์ต้นฉบับ (ใช้ Chrome, Edge, Opera หรือ Firefox บนคอมถึงจะเปลี่ยนได้)",
     tone: "is-error",
   },
 };
@@ -59,6 +87,9 @@ export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
   place?: HelperPlace;
 }) {
   const [copied, setCopied] = useState(false);
+  // Read after hydration: the server cannot know which browser is asking.
+  const browser = useSyncExternalStore(noSubscribe, helperBrowser, (): HelperBrowser => "chrome");
+  const setup = BROWSER_SETUP[browser === "other" ? "chrome" : browser];
 
   useEffect(() => {
     if (!copied) return;
@@ -68,7 +99,7 @@ export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
 
   async function copyExtensionsPage() {
     try {
-      await navigator.clipboard.writeText(EXTENSIONS_PAGE);
+      await navigator.clipboard.writeText(setup.page);
       setCopied(true);
     } catch {
       // The address is on screen anyway.
@@ -106,8 +137,8 @@ export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
           </p>
           <p className="dialog-text">
             {place === "device"
-              ? "ถ้าอยากได้ยินคีย์ใหม่ด้วย ให้เปิดห้องนี้บนคอมพิวเตอร์ด้วย Chrome หรือ Edge แล้วติดตั้งส่วนเสริม คนอื่นในห้องที่ติดตั้งแล้วจะได้ยินคีย์ที่เปลี่ยนตามปกติ"
-              : "ถ้าอยากให้เสียงเปลี่ยนคีย์จริง ให้เปิดห้องนี้บนคอมพิวเตอร์ที่ต่อกับทีวี แล้วใช้ Chrome หรือ Edge"}
+              ? "ถ้าอยากได้ยินคีย์ใหม่ด้วย ให้เปิดห้องนี้บนคอมพิวเตอร์ด้วย Chrome, Edge, Opera หรือ Firefox แล้วติดตั้งส่วนเสริม คนอื่นในห้องที่ติดตั้งแล้วจะได้ยินคีย์ที่เปลี่ยนตามปกติ"
+              : "ถ้าอยากให้เสียงเปลี่ยนคีย์จริง ให้เปิดห้องนี้บนคอมพิวเตอร์ที่ต่อกับทีวี แล้วใช้ Chrome, Edge, Opera หรือ Firefox"}
           </p>
         </>
       )}
@@ -129,16 +160,17 @@ export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
                 <Download size={18} aria-hidden="true" /> ดาวน์โหลดส่วนเสริม (.zip)
               </a>
               <ol className="helper-steps">
-                <li>ดับเบิลคลิกไฟล์ที่โหลดมา ให้แตกเป็นโฟลเดอร์ kuma-karaoke-key</li>
+                {browser !== "firefox" && <li>ดับเบิลคลิกไฟล์ที่โหลดมา ให้แตกเป็นโฟลเดอร์ kuma-karaoke-key</li>}
                 <li>
-                  เปิดหน้า <code>{EXTENSIONS_PAGE}</code>
+                  เปิดหน้า <code>{setup.page}</code>
                   <button type="button" className="text-btn" onClick={copyExtensionsPage}>
                     {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />} {copied ? "คัดลอกแล้ว" : "คัดลอกที่อยู่"}
                   </button>
-                  แล้วเปิด Developer mode ที่มุมขวาบน
+                  ใน {setup.name}
                 </li>
-                <li>กด Load unpacked แล้วเลือกโฟลเดอร์ที่แตกไว้</li>
+                {setup.steps.map((step) => <li key={step}>{step}</li>)}
               </ol>
+              {setup.note && <p className="helper-caveat">{setup.note}</p>}
             </>
           )}
           <button type="button" className="btn btn-secondary btn-block" onClick={() => window.location.reload()}>

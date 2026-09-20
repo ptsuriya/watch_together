@@ -87,7 +87,7 @@ export function WatchRoom({
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </div>
         )}
-        {!isHost && state.nowPlaying && <SyncOffsetControl offset={syncOffset} onChange={onSyncOffset} />}
+        {state.nowPlaying && <SyncOffsetControl offset={syncOffset} onChange={onSyncOffset} isHost={isHost} />}
         <div className="watch-social">
           {state.chat && <ChatBar onSend={onChat} compact />}
           <EmojiPad onSend={onReact} compact />

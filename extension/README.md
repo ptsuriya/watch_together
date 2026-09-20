@@ -15,8 +15,14 @@ the video through Web Audio into [Signalsmith Stretch](https://signalsmith-audio
 
 ## Install for testing
 
-`npm run extension:zip` in the project root packs `public/kuma-karaoke-key.zip`. Unzip it, open `chrome://extensions`,
-turn on Developer mode, press **Load unpacked** and pick the folder.
+`npm run extension:zip` in the project root packs `public/kuma-karaoke-key.zip`.
+
+- **Chrome / Brave / Vivaldi** — unzip, open `chrome://extensions`, turn on Developer mode, **Load unpacked**, pick the folder.
+- **Edge** — unzip, open `edge://extensions`, turn on developer mode, **Load unpacked**, pick the folder.
+- **Opera** — unzip, open `opera://extensions`, turn on Developer mode, **Load unpacked**, pick the folder.
+- **Firefox** — open `about:debugging#/runtime/this-firefox` and **Load Temporary Add-on**, then pick the zip itself. It
+  is dropped when Firefox closes, and the pitch shifting has not been verified on Gecko: the content script builds its
+  audio graph around the embed's `<video>`, which Firefox isolates differently. Treat it as untested.
 
 ## Publishing to the Chrome Web Store
 

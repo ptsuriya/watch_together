@@ -40,9 +40,24 @@ export function sendToHelper(frame: HTMLIFrameElement | null | undefined, messag
 
 export type HelperStatus = "checking" | "ready" | "missing" | "unsupported" | "blocked";
 
-function isDesktopChromium() {
+/** Which browser this is, as far as the install steps care. "other" cannot load the extension at all. */
+export type HelperBrowser = "chrome" | "edge" | "opera" | "firefox" | "other";
+
+export function helperBrowser(): HelperBrowser {
+  if (typeof navigator === "undefined") return "other";
   const agent = navigator.userAgent;
-  return /Chrome\/|Edg\//.test(agent) && !/Mobile|Android|CriOS|EdgiOS|OPR\//.test(agent);
+  // A phone, a tablet or a TV cannot install an extension whatever engine it runs.
+  if (/Mobile|Android|CriOS|EdgiOS|FxiOS|iPhone|iPad|iPod|SMART-TV|Tizen|Web0S/i.test(agent)) return "other";
+  if (/OPR\/|Opera/.test(agent)) return "opera";
+  if (/Edg\//.test(agent)) return "edge";
+  if (/Firefox\//.test(agent)) return "firefox";
+  // Brave and Vivaldi say Chrome and take Chrome's steps.
+  if (/Chrome\//.test(agent)) return "chrome";
+  return "other";
+}
+
+function canInstallHelper() {
+  return helperBrowser() !== "other";
 }
 
 /** Whether the extension answers from any YouTube embed on this page. */
@@ -60,7 +75,7 @@ export function useKeyHelperStatus(enabled: boolean) {
       else setAnswered("ready");
     };
     window.addEventListener("message", handleMessage);
-    const supportId = window.setTimeout(() => setSupported(isDesktopChromium()), 0);
+    const supportId = window.setTimeout(() => setSupported(canInstallHelper()), 0);
     const timeoutId = window.setTimeout(() => setTimedOut(true), DETECT_TIMEOUT_MS);
     return () => {
       window.removeEventListener("message", handleMessage);
