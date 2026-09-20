@@ -50,13 +50,13 @@ export function useSyncOffset() {
   return { offset, change };
 }
 
-/** Watch mode, guests: line this player up with a screen someone else is sharing. */
+/** Guests with their own player: line it up with a screen someone else is sharing, or with slow headphones. */
 export function SyncOffsetControl({ offset, onChange }: { offset: number; onChange: (value: number) => void }) {
   const sliderId = useId();
   return (
     <div className="sync-offset">
       <label htmlFor={sliderId}>
-        <Timer size={15} aria-hidden="true" /> ชดเชยดีเลย์จอแชร์
+        <Timer size={15} aria-hidden="true" /> ปรับหน่วงเวลา
         <strong>{formatOffset(offset)}</strong>
       </label>
       <div className="sync-offset-row">
@@ -81,7 +81,7 @@ export function SyncOffsetControl({ offset, onChange }: { offset: number; onChan
       </div>
       <small>
         {offset === 0
-          ? "ดูจอที่คนอื่นแชร์ (Discord, Meet) แล้วภาพมาช้ากว่าเสียงของคุณ? เลื่อนไปทางซ้ายให้เครื่องนี้เล่นตามหลัง"
+          ? "ไม่ตรงกับคนอื่น? ดูจอที่เขาแชร์แล้วภาพมาช้า เลื่อนซ้าย · ใส่หูฟังบลูทูธแล้วเสียงมาช้า เลื่อนขวา"
           : offset > 0
             ? `เครื่องนี้เล่นล่วงหน้าโฮสต์ ${formatOffset(offset)} — ค่านี้อยู่เฉพาะเครื่องนี้`
             : `เครื่องนี้เล่นตามหลังโฮสต์ ${formatOffset(Math.abs(offset))} — ค่านี้อยู่เฉพาะเครื่องนี้`}
