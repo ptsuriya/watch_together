@@ -25,7 +25,7 @@ English alternative:
 > เปิดห้องคาราโอเกะบนคอมที่ต่อทีวี เพื่อนสแกน QR เข้ามาด้วยมือถือ แล้วกดปุ่มเพิ่ม-ลดคีย์จากมือถือได้เลย เสียงเพลงบนจอกลางจะเปลี่ยนคีย์ตามทันที โดยความเร็วเพลงไม่เปลี่ยน
 >
 > • ติดตั้งครั้งเดียว ไม่ต้องตั้งค่าอะไรเพิ่ม
-> • ปรับได้ทีละครึ่งเสียง สูงสุด 12 ขั้นทั้งขึ้นและลง และกดกลับคีย์ต้นฉบับได้
+> • ปรับได้ทีละครึ่งเสียง หรือละเอียดทีละ 0.5 ขั้น สูงสุด 12 ขั้นทั้งขึ้นและลง และกดกลับคีย์ต้นฉบับได้
 > • เพลงใหม่เริ่มที่คีย์ต้นฉบับเสมอ
 > • ตอนคีย์เป็น 0 ส่วนเสริมไม่แตะเสียงเลย และตอนโฆษณาของ YouTube เล่น ส่วนเสริมจะหยุดทำงานชั่วคราว ไม่บล็อก ไม่ข้าม ไม่แก้โฆษณา
 > • ไม่เก็บข้อมูลใด ๆ ไม่มีการส่งข้อมูลออกไปที่ไหน ขอสิทธิ์แค่หน้าวิดีโอ youtube-nocookie.com เท่านั้น
@@ -40,7 +40,7 @@ English alternative:
 > This extension works with karaoke rooms in KUMA Listening Party. Open a karaoke room on the computer connected to your TV, let everyone scan the QR code with their phones, and the key buttons on their phones shift the pitch of the song on the shared screen — without changing its speed.
 >
 > • One-time install, nothing to configure
-> • Half a step at a time, up to 12 steps either way, plus reset to the original key
+> • A half step, or a fine 0.5 step, at a time — up to 12 steps either way, plus reset to the original key
 > • Every new song starts in its original key
 > • At key 0 the audio is not processed at all, and while a YouTube ad plays the pitch shift steps aside — ads are never blocked, skipped or altered
 > • Collects nothing, sends nothing anywhere, and asks for one site only: youtube-nocookie.com
