@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Mic, MonitorPlay, Music2, QrCode, ScanLine, Star, Tv, UserX } from "lucide-react";
+import { ArrowRight, Check, Mic, MicVocal, MonitorPlay, Music2, QrCode, ScanLine, Star, Tv, UserX } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ROOM_MODES, type RoomMode } from "../../lib/room-state";
@@ -8,14 +8,15 @@ import { MODE_LABELS } from "./room-model";
 import { QrScanDialog } from "./qr-scanner";
 import { Art, type ArtName, Brand } from "./ui";
 
-const MODE_ICONS: Record<RoomMode, typeof Tv> = { watch: MonitorPlay, remote: Tv, karaoke: Mic };
+const MODE_ICONS: Record<RoomMode, typeof Tv> = { watch: MonitorPlay, remote: Tv, karaoke: Mic, singalong: MicVocal };
 
-const MODE_BEARS: Record<RoomMode, ArtName> = { watch: "laptop", remote: "phone", karaoke: "party" };
+const MODE_BEARS: Record<RoomMode, ArtName> = { watch: "laptop", remote: "phone", karaoke: "party", singalong: "hello" };
 
 const MODE_POINTS: Record<RoomMode, string[]> = {
   watch: ["วิดีโอเล่นพร้อมกันทุกเครื่อง", "ทุกคนเข้าคิวได้", "โฮสต์แปะเนื้อเพลง อ่านตัวใหญ่ได้"],
   remote: ["จอโฮสต์โชว์วิดีโอใหญ่สุด", "QR ติดจอ สแกนแล้วใช้ได้เลย", "มือถือเป็นรีโมท เพิ่มคิว เล่น ข้าม"],
-  karaoke: ["ทุกอย่างของโหมดรีโมท", "ลด-เพิ่มคีย์จากมือถือ", "ส่งคีย์ไป Transpose ผ่าน MIDI"],
+  karaoke: ["ทุกอย่างของโหมดรีโมท", "ลด-เพิ่มคีย์จากมือถือ", "จอกลางเปลี่ยนคีย์จริงด้วยส่วนเสริม KUMA"],
+  singalong: ["ร้องกันคนละที่ ทุกคนมีจอของตัวเอง", "เนื้อเพลงขึ้นทุกเครื่อง อ่านตัวใหญ่ได้", "ปรับคีย์ทั้งห้อง เครื่องที่ติดตั้งส่วนเสริมจะได้ยินคีย์ใหม่"],
 };
 
 const ROOM_CODE = /^WAVE-[A-Z0-9]{8}$/;
@@ -30,7 +31,7 @@ function normalizeRoomCode(input: string) {
 }
 
 function ModeDiagram({ mode }: { mode: RoomMode }) {
-  if (mode === "watch") {
+  if (mode === "watch" || mode === "singalong") {
     return (
       <div className="diagram diagram-watch" aria-hidden="true">
         <span className="d-video" /><span className="d-notes" />
@@ -149,7 +150,7 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
 
         <section className="modes-section" aria-labelledby="modes-title">
           <div className="container">
-            <h2 id="modes-title" className="section-title">3 โหมด สำหรับทุกแบบของวง</h2>
+            <h2 id="modes-title" className="section-title">{ROOM_MODES.length} โหมด สำหรับทุกแบบของวง</h2>
             <p className="section-lead">โฮสต์เปลี่ยนโหมดได้ทุกเมื่อจากหัวห้อง เพื่อนในห้องจะเปลี่ยนตามทันที</p>
             <div className="mode-cards">
               {ROOM_MODES.map((option) => {

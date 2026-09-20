@@ -2,16 +2,22 @@
 
 import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
+import type { HelperStatus } from "../../lib/karaoke-key";
+import { mayChangeKey, singerOf } from "../../lib/room-state";
+import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { ChatBar, type ChatMessage } from "./chat";
 import { PartyButton, ScorePad, SpotlightBanner } from "./party";
 import { SyncOffsetControl } from "./sync-offset";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
-import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel, NotesToggle } from "./room-panels";
+import { ChatToggle, CrossfadeSelect, KeyControl, KeyControlSelect, MemberList, NotesPanel, NotesToggle } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art } from "./ui";
 
-/** Watch together: everyone has a player. Video | notes on top, members | up next below. */
+/**
+ * Watch together, and its karaoke twin: everyone has a player. Video | notes on top, members | up next below.
+ * In a sing-along the same screen also carries the key, because every device shifts its own sound.
+ */
 export function WatchRoom({
   model,
   player,
@@ -23,6 +29,8 @@ export function WatchRoom({
   onOpenParty,
   syncOffset,
   onSyncOffset,
+  keyHelperStatus,
+  onOpenKaraokeSetup,
 }: {
   model: RoomModel;
   player: ReactNode;
@@ -35,9 +43,13 @@ export function WatchRoom({
   /** Guests only: how far ahead of the host this device plays. */
   syncOffset: number;
   onSyncOffset: (value: number) => void;
+  keyHelperStatus: HelperStatus;
+  onOpenKaraokeSetup: () => void;
 }) {
   const { state, isHost, canManage, dispatch, members, selfId, selfName } = model;
   const memberCount = members.length || 1;
+  const karaoke = state.mode === "singalong";
+  const canChangeKey = canManage || mayChangeKey(state, selfName);
 
   return (
     <div className={`watch-grid${state.notesOn ? "" : " no-notes"}`}>
@@ -55,12 +67,24 @@ export function WatchRoom({
           <div className="now-copy">
             <small>{state.nowPlaying ? (state.isPlaying ? "กำลังเล่น" : "หยุดชั่วคราว") : "พร้อมเล่น"}</small>
             <strong>{state.nowPlaying?.title ?? "รอวิดีโอแรกของห้อง"}</strong>
-            {state.nowPlaying && <span>เพิ่มโดย {state.nowPlaying.addedBy}</span>}
+            {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
           </div>
           <PlaybackButtons state={state} dispatch={dispatch} />
         </div>
         {state.spotlight && (
           <SpotlightBanner spotlight={state.spotlight} mine={state.spotlight.memberId === selfId} place="phone" />
+        )}
+        {karaoke && (
+          <div className="watch-key">
+            {canChangeKey ? <KeyControl value={state.key} dispatch={dispatch} /> : (
+              <p className="key-locked">
+                {state.keyControl === "owner" ? "โฮสต์ให้เฉพาะคนที่ขอเพลงนี้ปรับคีย์ได้" : "โฮสต์ปรับคีย์เอง"}
+              </p>
+            )}
+            {canManage && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
+            <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
+            <KeyHelperProbe active={keyHelperStatus === "checking"} />
+          </div>
         )}
         {!isHost && state.nowPlaying && <SyncOffsetControl offset={syncOffset} onChange={onSyncOffset} />}
         <div className="watch-social">

@@ -1,6 +1,16 @@
-export type RoomMode = "watch" | "remote" | "karaoke";
+export type RoomMode = "watch" | "remote" | "karaoke" | "singalong";
 
-export const ROOM_MODES = ["watch", "remote", "karaoke"] as const satisfies readonly RoomMode[];
+export const ROOM_MODES = ["watch", "remote", "karaoke", "singalong"] as const satisfies readonly RoomMode[];
+
+/** Both karaoke modes: the room carries a key, and the queue talks about who sings. */
+export function isKaraoke(mode: RoomMode) {
+  return mode === "karaoke" || mode === "singalong";
+}
+
+/** Everyone plays the video on their own device, instead of watching one screen the host runs. */
+export function hasOwnScreens(mode: RoomMode) {
+  return mode === "watch" || mode === "singalong";
+}
 
 export function parseRoomMode(value: string | null | undefined): RoomMode | undefined {
   // Links shared before "Order to host" became the remote mode.
@@ -231,7 +241,7 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return { ...state, isPlaying: playing };
     }
     case "key": {
-      if (state.mode !== "karaoke") return state;
+      if (!isKaraoke(state.mode)) return state;
       const key = intent.step === 0 ? 0 : clampKey(state.key + intent.step);
       return key === state.key ? state : { ...state, key };
     }

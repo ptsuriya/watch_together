@@ -905,6 +905,14 @@ select.field { padding-right: 8px; }
   100% { opacity: 0; scale: 0.96; }
 }
 
+/* ---- Sing-along: the key sits with the player, because each screen shifts its own sound ---- */
+
+.watch-key {
+  display: grid; gap: 10px; padding: 12px;
+  border: 2px solid var(--line); border-radius: 16px; background: rgba(255, 240, 204, 0.55);
+}
+.watch-key .helper-note { margin: 0; }
+
 /* ---- Lining up with a shared screen ---- */
 
 .sync-offset {

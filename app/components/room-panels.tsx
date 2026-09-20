@@ -2,7 +2,7 @@
 
 import { QRCodeSVG } from "qrcode.react";
 import {
-  AArrowDown, AArrowUp, Check, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
+  AArrowDown, AArrowUp, Check, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, MicVocal, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
   MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
@@ -15,7 +15,7 @@ import { canCrossfade } from "../../lib/youtube";
 import { MODE_LABELS, type RoomModel } from "./room-model";
 import { Art, Avatar, Brand, Dialog, EmptyNote } from "./ui";
 
-const MODE_ICONS: Record<RoomMode, typeof Tv> = { watch: MonitorPlay, remote: Tv, karaoke: Mic };
+const MODE_ICONS: Record<RoomMode, typeof Tv> = { watch: MonitorPlay, remote: Tv, karaoke: Mic, singalong: MicVocal };
 
 const STATUS_TEXT: Record<RealtimeStatus, string> = {
   connected: "ออนไลน์",

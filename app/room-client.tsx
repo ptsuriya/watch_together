@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  BOMB_SECONDS, createRoomState, hasContent, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
+  BOMB_SECONDS, createRoomState, hasContent, hasOwnScreens, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
   sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
@@ -147,7 +147,7 @@ export default function RoomClient({
   const pushBurst = useCallback((emoji: string, from: string) => {
     burstIdRef.current += 1;
     // Watch mode: emoji rise across the page but stop below the player instead of flying over it.
-    const player = stateRef.current.mode === "watch" ? document.querySelector(".player-card")?.getBoundingClientRect() : null;
+    const player = hasOwnScreens(stateRef.current.mode) ? document.querySelector(".player-card")?.getBoundingClientRect() : null;
     // Bursts are about a third of the window tall, and never taller than the room left under the player.
     const room = player ? Math.max(140, Math.round(window.innerHeight - player.bottom - 16)) : window.innerHeight;
     const rise = -Math.min(Math.round(window.innerHeight * 0.3), room);
@@ -190,7 +190,7 @@ export default function RoomClient({
   const pushMessage = useCallback((text: string, from: string) => {
     messageIdRef.current += 1;
     // Watch mode flies messages across the whole page, so each one picks a height that misses the player.
-    const acrossPage = stateRef.current.mode === "watch";
+    const acrossPage = hasOwnScreens(stateRef.current.mode);
     const top = acrossPage ? pickFlightTop(document.querySelector(".player-card")?.getBoundingClientRect() ?? null) : undefined;
     const message: ChatMessage = { id: messageIdRef.current, text, from, at: Date.now(), lane: messageIdRef.current % CHAT_LANES, top };
     setMessages((current) => [...current.slice(-(CHAT_LOG_SIZE - 1)), message]);
@@ -411,7 +411,8 @@ export default function RoomClient({
     supabase: supabaseConfig,
   });
 
-  const keyHelperStatus = useKeyHelperStatus(isHost && state.mode === "karaoke");
+  // Everyone's own screen shifts its own key in a sing-along, so every device checks for the extension.
+  const keyHelperStatus = useKeyHelperStatus(state.mode === "singalong" || (isHost && state.mode === "karaoke"));
   const { offset: syncOffset, change: changeSyncOffset } = useSyncOffset();
   const selfName = listenerName || (isHost ? "โฮสต์" : selfId ? `ผู้ฟัง ${selfId.slice(0, 4).toUpperCase()}` : "ผู้ฟัง");
   const hostOnline = members.some((member) => member.isHost);
@@ -462,7 +463,7 @@ export default function RoomClient({
 
   useEffect(() => {
     if (!isHost || status !== "connected") return;
-    const interval = state.mode === "watch" && state.isPlaying ? HEARTBEAT_WATCHING_MS : HEARTBEAT_IDLE_MS;
+    const interval = hasOwnScreens(state.mode) && state.isPlaying ? HEARTBEAT_WATCHING_MS : HEARTBEAT_IDLE_MS;
     const intervalId = window.setInterval(broadcastStateNow, interval);
     return () => window.clearInterval(intervalId);
   }, [broadcastStateNow, isHost, state.isPlaying, state.mode, status]);
@@ -533,7 +534,7 @@ export default function RoomClient({
     setRoomCode(code);
     setRequestedHost(true);
     // The TV screen shows its QR all the time; watch rooms start by inviting people.
-    setDialog(mode === "watch" ? "invite" : null);
+    setDialog(hasOwnScreens(mode) ? "invite" : null);
     setScreen("room");
   }
 
@@ -557,7 +558,7 @@ export default function RoomClient({
   function changeMode(mode: RoomMode) {
     if (realtimeConfigured && !isHost) return;
     const current = stateRef.current;
-    if (current.nowPlaying && (mode === "watch") !== (current.mode === "watch")) {
+    if (current.nowPlaying && hasOwnScreens(mode) !== hasOwnScreens(current.mode)) {
       // The other layout builds a new player; carry on from the same moment.
       setResume({ itemId: current.nowPlaying.id, position: timeRef.current?.() ?? 0, at: Date.now() });
     }
@@ -606,19 +607,19 @@ export default function RoomClient({
   const model: RoomModel = {
     state, isHost, canManage, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
   };
-  const tvScreen = isHost && state.mode !== "watch";
+  const tvScreen = isHost && !hasOwnScreens(state.mode);
   const waiting = !isHost && realtimeConfigured && !synced;
   const hostAway = !isHost && realtimeConfigured && synced && status === "connected" && members.length > 0 && !hostOnline;
 
-  const player = state.nowPlaying && (isHost || state.mode === "watch") ? (
+  const player = state.nowPlaying && (isHost || hasOwnScreens(state.mode)) ? (
     <YouTubePlayer
       item={state.nowPlaying}
       playing={state.isPlaying}
       controls={isHost}
-      fullscreenButton={state.mode === "watch"}
+      fullscreenButton={hasOwnScreens(state.mode)}
       crossfade={state.crossfade}
       hasNext={state.queue.length > 0}
-      semitones={isHost && state.mode === "karaoke" ? state.key : undefined}
+      semitones={isKaraoke(state.mode) && (isHost || state.mode === "singalong") ? state.key : undefined}
       onNearEnd={isHost ? handleNearEnd : undefined}
       follow={isHost ? undefined : follow}
       offset={isHost ? 0 : syncOffset}
@@ -632,7 +633,7 @@ export default function RoomClient({
 
   let view;
   if (waiting) view = <WaitingRoom status={status} hostOnline={hostOnline} roomCode={roomCode} />;
-  else if (state.mode === "watch") {
+  else if (hasOwnScreens(state.mode)) {
     view = (
       <WatchRoom
         model={model}
@@ -643,6 +644,8 @@ export default function RoomClient({
         onOpenParty={() => setDialog("party")}
         syncOffset={syncOffset}
         onSyncOffset={changeSyncOffset}
+        keyHelperStatus={keyHelperStatus}
+        onOpenKaraokeSetup={() => setDialog("karaoke")}
         onChat={sendChat}
         onReact={sendReaction}
       />
@@ -686,8 +689,8 @@ export default function RoomClient({
         onModeChange={changeMode}
         onFullscreen={tvScreen ? toggleFullscreen : undefined}
       />
-      {state.chat && state.mode === "watch" && <ChatFlights messages={messages} variant="page" />}
-      {state.mode === "watch" && <EmojiRain bursts={bursts} variant="page" />}
+      {state.chat && hasOwnScreens(state.mode) && <ChatFlights messages={messages} variant="page" />}
+      {hasOwnScreens(state.mode) && <EmojiRain bursts={bursts} variant="page" />}
       {hostAway && <p className="banner banner-top" role="status">โฮสต์ออกจากห้องไปแล้ว รอโฮสต์กลับมา คิวยังอยู่ครบ</p>}
       <main className="room-main">{view}</main>
       {!tvScreen && <ToastStack toasts={toasts} placement={isHost ? "corner" : "bottom"} />}
