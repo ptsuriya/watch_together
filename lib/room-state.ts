@@ -47,6 +47,8 @@ export type RoomState = {
 /** 0 resets to the original key; the rest move a whole or half semitone. */
 export type KeyStep = -1 | -0.5 | 0 | 0.5 | 1;
 export const KEY_STEPS = [-1, -0.5, 0, 0.5, 1] as const satisfies readonly KeyStep[];
+/** One press of the key buttons. The room counts these presses; the pitch shifter gets semitones. */
+export const KEY_UNIT: KeyStep = 0.5;
 
 export type KeyControl = "host" | "owner" | "everyone";
 export const KEY_CONTROL_OPTIONS = ["everyone", "owner", "host"] as const satisfies readonly KeyControl[];
@@ -113,10 +115,11 @@ export function clampKey(key: number) {
   return Math.max(-KEY_RANGE, Math.min(KEY_RANGE, Math.round(key * 2) / 2));
 }
 
+/** What people see: one per press, not the half semitone underneath. */
 export function formatKey(key: number) {
-  const size = Number.isInteger(key) ? String(Math.abs(key)) : Math.abs(key).toFixed(1);
-  if (key === 0) return "0";
-  return key > 0 ? `+${size}` : `−${size}`;
+  const steps = Math.round(key / KEY_UNIT);
+  if (steps === 0) return "0";
+  return steps > 0 ? `+${steps}` : `−${Math.abs(steps)}`;
 }
 
 export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {

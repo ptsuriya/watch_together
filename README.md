@@ -6,7 +6,7 @@ Private YouTube rooms in three modes, styled with the KUMA honey-bear sticker th
 | --- | --- | --- |
 | **Watch together** (`watch`) | Video \| notes on top, members \| up next below | Same layout; their player follows the host. Anyone can queue, play, pause and skip; the notes hold the lyrics and the host can open them to everyone. |
 | **Remote** (`remote`) | The shared TV or shared screen: the video takes the space, the QR stays in view, the queue shows the next few songs | A phone remote: add songs, play/pause, skip |
-| **Karaoke** (`karaoke`) | Remote, plus the current key on screen and emoji flying up from the phones | Remote, plus key −/+ (0.5 per press, ±1 for a jump), reset and an emoji pad |
+| **Karaoke** (`karaoke`) | Remote, plus the current key on screen and emoji flying up from the phones | Remote, plus key −/+, reset and an emoji pad |
 
 The host decides who may change the key: only the host, only whoever queued the song, or anyone in the room.
 
@@ -59,6 +59,6 @@ Pitch-shifting YouTube audio is only possible from inside the embed, so the key 
 
 Install while it is not on the Chrome Web Store yet: download the zip, unzip it, open `chrome://extensions`, turn on Developer mode, press **Load unpacked** and pick the folder. Set `NEXT_PUBLIC_KARAOKE_EXTENSION_URL` once the extension is published, and the sidebar shows a one-click store button instead.
 
-How it works: the extension's content script runs in the `youtube-nocookie.com` embed, and the room posts `{source: "kuma-listening-party", type: "key", semitones}` to that frame. The script routes the video through Web Audio into [Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/) (MIT, vendored in `extension/vendor/`), which shifts the pitch with about 70 ms of latency. The main buttons move the key by half a semitone, with ±1 underneath for a bigger jump, up to twelve steps either way. At key 0 the audio is not processed at all, and while YouTube shows an ad the pitch shift steps aside so the ad plays exactly as YouTube sent it. Nothing is collected or sent anywhere; the extension asks for no permissions beyond that one site.
+How it works: the extension's content script runs in the `youtube-nocookie.com` embed, and the room posts `{source: "kuma-listening-party", type: "key", semitones}` to that frame. The script routes the video through Web Audio into [Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/) (MIT, vendored in `extension/vendor/`), which shifts the pitch with about 70 ms of latency. Two buttons move the key, half a semitone per press; the room counts presses, so `+3` on screen is 1.5 semitones in the extension. At key 0 the audio is not processed at all, and while YouTube shows an ad the pitch shift steps aside so the ad plays exactly as YouTube sent it. Nothing is collected or sent anywhere; the extension asks for no permissions beyond that one site.
 
 Without the extension the room still works: the key on the TV and on the phones changes, but the sound does not.

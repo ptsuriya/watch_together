@@ -720,16 +720,6 @@ select.field { padding-right: 8px; }
 .key-value strong { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .key-control-lg .key-btn { flex: 1; flex-direction: column; gap: 2px; width: auto; height: 76px; border-radius: 22px; font-size: 14px; }
 .key-control-lg .key-value strong { font-size: 52px; }
-.key-fine { display: flex; align-items: center; gap: 8px; color: var(--clay); font-size: 13px; font-weight: 600; }
-.key-fine button {
-  min-width: 52px; padding: 4px 10px;
-  border: 2px solid var(--bark); border-radius: 999px; background: var(--white); color: var(--bark);
-  font-size: 14px; font-weight: 700;
-}
-.key-fine button:hover:not(:disabled) { background: var(--honey); }
-.key-fine button:disabled { opacity: 0.4; }
-.remote-key .key-fine button { min-width: 64px; min-height: 40px; }
-
 .key-reset {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
   border: 0; background: none; color: var(--amber-deep);
