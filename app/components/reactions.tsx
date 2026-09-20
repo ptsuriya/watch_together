@@ -6,7 +6,7 @@ import { REACTIONS, sanitizeReaction } from "../../lib/room-state";
 import { Dialog } from "./ui";
 
 export type EmojiParticle = { x: number; delay: number; duration: number; size: number; drift: number; spin: number };
-export type EmojiBurst = { id: number; emoji: string; from: string; particles: EmojiParticle[] };
+export type EmojiBurst = { id: number; emoji: string; from: string; particles: EmojiParticle[]; rise?: number };
 
 const PARTICLES_PER_BURST = 9;
 export const BURST_LIFETIME_MS = 4200;
@@ -20,7 +20,7 @@ const EXTRA_EMOJI = [
 ];
 
 /** Random flight paths, made once when the burst arrives so re-renders do not reshuffle them. */
-export function makeBurst(id: number, emoji: string, from: string): EmojiBurst {
+export function makeBurst(id: number, emoji: string, from: string, rise?: number): EmojiBurst {
   const particles = Array.from({ length: PARTICLES_PER_BURST }, () => ({
     x: 4 + Math.random() * 92,
     delay: Math.random() * 0.5,
@@ -30,36 +30,36 @@ export function makeBurst(id: number, emoji: string, from: string): EmojiBurst {
     drift: Math.round((Math.random() - 0.5) * 220),
     spin: Math.round((Math.random() - 0.5) * 60),
   }));
-  return { id, emoji, from, particles };
+  return { id, emoji, from, particles, rise };
 }
 
 /**
- * Emoji flying up when someone taps one. On a shared TV they cross the whole screen; in watch mode they stay in the
- * strip under the video, where they cover nobody's picture.
+ * Emoji flying up when someone taps one. On a shared TV they cross the whole screen; on a page where everyone has
+ * their own small player they rise across the window but stop short of the video.
  */
-export function EmojiRain({ bursts, variant = "stage" }: { bursts: EmojiBurst[]; variant?: "stage" | "strip" }) {
+export function EmojiRain({ bursts, variant = "stage" }: { bursts: EmojiBurst[]; variant?: "stage" | "page" }) {
   if (bursts.length === 0) return null;
   return (
     <div className={`emoji-rain emoji-rain-${variant}`} aria-hidden="true">
       {bursts.map((burst) => (
-        <div key={burst.id}>
+        <div key={burst.id} style={burst.rise ? ({ "--emoji-rise": `${burst.rise}px` } as CSSProperties) : undefined}>
           {burst.particles.map((particle, index) => (
             <span
               key={index}
               className="emoji-particle"
               style={{
                 left: `${particle.x}%`,
-                fontSize: variant === "stage" ? `${particle.size}vmin` : `${Math.round(particle.size * 4)}px`,
+                fontSize: `${particle.size}vmin`,
                 animationDelay: `${particle.delay}s`,
-                animationDuration: `${variant === "stage" ? particle.duration : particle.duration * 0.7}s`,
-                "--drift": `${variant === "stage" ? particle.drift : Math.round(particle.drift / 3)}px`,
+                animationDuration: `${particle.duration}s`,
+                "--drift": `${particle.drift}px`,
                 "--spin": `${particle.spin}deg`,
               } as CSSProperties}
             >
               {burst.emoji}
             </span>
           ))}
-          {variant === "stage" && <span className="emoji-from">{burst.from} {burst.emoji}</span>}
+          <span className="emoji-from">{burst.from} {burst.emoji}</span>
         </div>
       ))}
     </div>

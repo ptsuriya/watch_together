@@ -642,7 +642,8 @@ select.field { padding-right: 8px; }
 
 .emoji-rain { position: absolute; inset: 0; z-index: 5; overflow: hidden; pointer-events: none; }
 .emoji-rain-stage { --emoji-rise: -78vh; }
-.emoji-rain-strip { --emoji-rise: -90px; }
+.emoji-rain-page { position: fixed; z-index: 34; --emoji-rise: -40vh; }
+.emoji-rain-page .emoji-from { bottom: 8px; font-size: 16px; }
 .emoji-particle {
   position: absolute; bottom: -8%; line-height: 1;
   animation-name: emoji-fly; animation-timing-function: ease-out; animation-fill-mode: forwards;
@@ -671,13 +672,10 @@ select.field { padding-right: 8px; }
 .chat-bar { display: flex; gap: 8px; }
 .chat-bar .field { flex: 1; min-width: 0; }
 .chat-bar-compact { flex: 1 1 260px; }
-/* Under the video in watch mode: messages fly and emoji rise here, never over anyone's picture. */
-.room-ticker {
-  position: relative; height: 68px; overflow: hidden;
-  border-top: 2px solid rgba(42, 16, 16, 0.12); background: var(--cream);
-  container-type: inline-size;
+.watch-social {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 18px 16px;
+  border-top: 2px solid rgba(42, 16, 16, 0.12);
 }
-.watch-social { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 18px 16px; }
 .watch-social .emoji-pad { flex: 1 1 240px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .side-emoji { padding: 12px; }
 .chat-log { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; max-height: 168px; overflow-y: auto; }

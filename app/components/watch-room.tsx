@@ -3,7 +3,7 @@
 import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
 import { ChatBar, type ChatMessage } from "./chat";
-import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
+import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel } from "./room-panels";
 import type { RoomModel } from "./room-model";
@@ -14,7 +14,6 @@ export function WatchRoom({
   model,
   player,
   messages,
-  bursts,
   onExpandNotes,
   onInvite,
   onChat,
@@ -23,7 +22,6 @@ export function WatchRoom({
   model: RoomModel;
   player: ReactNode;
   messages: ChatMessage[];
-  bursts: EmojiBurst[];
   onExpandNotes: () => void;
   onInvite: () => void;
   onChat: (text: string) => void;
@@ -51,10 +49,6 @@ export function WatchRoom({
             {state.nowPlaying && <span>เพิ่มโดย {state.nowPlaying.addedBy}</span>}
           </div>
           <PlaybackButtons state={state} dispatch={dispatch} />
-        </div>
-        {/* Emoji rise under the video here: in this mode every screen is somebody's small window. */}
-        <div className="room-ticker">
-          <EmojiRain bursts={bursts} variant="strip" />
         </div>
         <div className="watch-social">
           {state.chat && <ChatBar onSend={onChat} compact />}

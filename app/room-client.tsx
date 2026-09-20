@@ -13,7 +13,7 @@ import { lookupVideo, parseYouTubeId } from "../lib/youtube";
 import { HomeScreen } from "./components/home-screen";
 import { ChatFlights, CHAT_FLIGHT_MS, CHAT_LANES, CHAT_LOG_SIZE, type ChatMessage, pickFlightTop } from "./components/chat";
 import { KaraokeSetupDialog } from "./components/key-helper";
-import { BURST_LIFETIME_MS, type EmojiBurst, makeBurst } from "./components/reactions";
+import { BURST_LIFETIME_MS, type EmojiBurst, EmojiRain, makeBurst } from "./components/reactions";
 import { RemoteRoom, WaitingRoom } from "./components/remote-room";
 import type { AddVideoResult, RoomModel, Toast } from "./components/room-model";
 import { InviteDialog, NameDialog, NotesDialog, RoomHeader } from "./components/room-panels";
@@ -133,7 +133,10 @@ export default function RoomClient({
 
   const pushBurst = useCallback((emoji: string, from: string) => {
     burstIdRef.current += 1;
-    const burst = makeBurst(burstIdRef.current, emoji, from);
+    // Watch mode: emoji rise across the page but stop below the player instead of flying over it.
+    const player = stateRef.current.mode === "watch" ? document.querySelector(".player-card")?.getBoundingClientRect() : null;
+    const rise = player ? -Math.max(140, Math.round(window.innerHeight - player.bottom - 16)) : undefined;
+    const burst = makeBurst(burstIdRef.current, emoji, from, rise);
     setBursts((current) => [...current.slice(-(MAX_BURSTS - 1)), burst]);
     window.setTimeout(() => setBursts((current) => current.filter((item) => item.id !== burst.id)), BURST_LIFETIME_MS);
   }, []);
@@ -519,7 +522,6 @@ export default function RoomClient({
         model={model}
         player={player}
         messages={messages}
-        bursts={bursts}
         onExpandNotes={() => setDialog("notes")}
         onInvite={() => setDialog("invite")}
         onChat={sendChat}
@@ -564,6 +566,7 @@ export default function RoomClient({
         onFullscreen={tvScreen ? toggleFullscreen : undefined}
       />
       {state.chat && state.mode === "watch" && <ChatFlights messages={messages} variant="page" />}
+      {state.mode === "watch" && <EmojiRain bursts={bursts} variant="page" />}
       {hostAway && <p className="banner banner-top" role="status">โฮสต์ออกจากห้องไปแล้ว รอโฮสต์กลับมา คิวยังอยู่ครบ</p>}
       <main className="room-main">{view}</main>
       {!tvScreen && <ToastStack toasts={toasts} placement={isHost ? "corner" : "bottom"} />}
