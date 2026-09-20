@@ -15,7 +15,7 @@ function clampOffset(value: number) {
 
 export function formatOffset(offset: number) {
   if (offset === 0) return "0 วิ";
-  return `${offset > 0 ? "+" : "−"}${Math.abs(offset).toFixed(2).replace(/0$/, "")} วิ`;
+  return `${offset > 0 ? "+" : "−"}${Math.abs(offset).toFixed(2).replace(/\.?0+$/, "")} วิ`;
 }
 
 /**
