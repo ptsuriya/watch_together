@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, RotateCcw, Timer } from "lucide-react";
+import { HelpCircle, Minus, Plus, RotateCcw, Timer } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 const OFFSET_KEY = "sidewave-sync-offset";
@@ -60,7 +60,7 @@ export function SyncOffsetControl({ offset, onChange }: { offset: number; onChan
         <strong>{formatOffset(offset)}</strong>
       </label>
       <div className="sync-offset-row">
-        <button type="button" className="icon-btn" onClick={() => onChange(offset - OFFSET_NUDGE)} aria-label="ช้าลง 0.1 วินาที">
+        <button type="button" className="icon-btn" onClick={() => onChange(offset - OFFSET_NUDGE)} aria-label="ตามหลังอีก 0.1 วินาที" title="ตามหลัง">
           <Minus size={16} aria-hidden="true" />
         </button>
         <input
@@ -72,7 +72,7 @@ export function SyncOffsetControl({ offset, onChange }: { offset: number; onChan
           value={offset}
           onChange={(event) => onChange(Number(event.target.value))}
         />
-        <button type="button" className="icon-btn" onClick={() => onChange(offset + OFFSET_NUDGE)} aria-label="เร็วขึ้น 0.1 วินาที">
+        <button type="button" className="icon-btn" onClick={() => onChange(offset + OFFSET_NUDGE)} aria-label="ล่วงหน้าอีก 0.1 วินาที" title="ล่วงหน้า">
           <Plus size={16} aria-hidden="true" />
         </button>
         <button type="button" className="icon-btn" onClick={() => onChange(0)} aria-label="กลับไปตรงกับโฮสต์" title="ตรงกับโฮสต์">
@@ -81,11 +81,14 @@ export function SyncOffsetControl({ offset, onChange }: { offset: number; onChan
       </div>
       <small>
         {offset === 0
-          ? "ดูผ่านจอแชร์ เช่น Discord แล้วภาพมาช้ากว่าเสียงของคุณ? เลื่อนขวาให้เครื่องนี้เล่นล่วงหน้า"
+          ? "ดูจอที่คนอื่นแชร์ (Discord, Meet) แล้วภาพมาช้ากว่าเสียงของคุณ? เลื่อนไปทางซ้ายให้เครื่องนี้เล่นตามหลัง"
           : offset > 0
-            ? `เครื่องนี้เล่นล่วงหน้าโฮสต์ ${formatOffset(offset)} ค่านี้อยู่เฉพาะเครื่องนี้`
-            : `เครื่องนี้เล่นตามหลังโฮสต์ ${formatOffset(Math.abs(offset))} ค่านี้อยู่เฉพาะเครื่องนี้`}
+            ? `เครื่องนี้เล่นล่วงหน้าโฮสต์ ${formatOffset(offset)} — ค่านี้อยู่เฉพาะเครื่องนี้`
+            : `เครื่องนี้เล่นตามหลังโฮสต์ ${formatOffset(Math.abs(offset))} — ค่านี้อยู่เฉพาะเครื่องนี้`}
       </small>
+      <a className="sync-offset-help" href="/discord" target="_blank" rel="noopener noreferrer">
+        <HelpCircle size={14} aria-hidden="true" /> วิธีดูด้วยกันผ่าน Discord
+      </a>
     </div>
   );
 }

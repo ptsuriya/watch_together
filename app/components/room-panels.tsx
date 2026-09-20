@@ -2,7 +2,7 @@
 
 import { QRCodeSVG } from "qrcode.react";
 import {
-  AArrowDown, AArrowUp, Check, Copy, Crown, Maximize, Maximize2, Mic, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
+  AArrowDown, AArrowUp, Check, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
   MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
@@ -451,6 +451,9 @@ export function InviteDialog({ model, onClose }: { model: RoomModel; onClose: ()
         </button>
       </div>
       <p className="invite-code">รหัสห้อง <strong>{model.roomCode}</strong></p>
+      <a className="invite-guide" href="/discord" target="_blank" rel="noopener noreferrer">
+        <HelpCircle size={15} aria-hidden="true" /> ดูด้วยกันผ่าน Discord ทำยังไง
+      </a>
 
       <div className="invite-members">
         <h3>คนในห้อง</h3>

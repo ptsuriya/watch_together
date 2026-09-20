@@ -363,7 +363,12 @@ select.field { padding-right: 8px; }
 .legal-updated { margin-top: 8px; color: var(--clay); font-size: 14px; }
 .legal section { margin-top: 32px; }
 .legal h2 { margin-bottom: 12px; color: var(--bark); font-size: 20px; font-weight: 800; }
-.legal ul { display: grid; gap: 10px; margin: 0; padding-left: 20px; color: var(--cocoa); line-height: 1.8; }
+.legal ul, .legal ol { display: grid; gap: 10px; margin: 0; padding-left: 22px; color: var(--cocoa); line-height: 1.8; }
+.legal ol { gap: 12px; }
+.legal li ul { margin-top: 10px; }
+.legal h3 { margin: 24px 0 10px; color: var(--bark); font-size: 17px; font-weight: 800; }
+.legal section > p + h3 { margin-top: 20px; }
+.legal strong { color: var(--bark); }
 .legal p { color: var(--cocoa); line-height: 1.8; }
 .legal a { color: var(--amber-deep); font-weight: 600; text-underline-offset: 3px; }
 .legal-contact { margin-top: 32px; color: var(--clay); }
@@ -911,6 +916,11 @@ select.field { padding-right: 8px; }
 .sync-offset small { color: var(--clay); font-size: 12px; }
 .sync-offset-row { display: flex; align-items: center; gap: 8px; }
 .sync-offset-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--amber); }
+.sync-offset-help, .invite-guide {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--amber-deep); font-size: 13px; font-weight: 600; text-underline-offset: 3px;
+}
+.invite-guide { margin-top: 4px; font-size: 14px; }
 
 /* ---- Party games: the mic bomb, votes and scores ---- */
 

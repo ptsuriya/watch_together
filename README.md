@@ -49,7 +49,9 @@ The host can hand the run of the room to anyone in it: open the people dialog (t
 
 ## Watching along with a shared screen
 
-If the room is on a call — someone shares their screen in Discord, Meet or Zoom — the stream reaches everyone a little late, and how late differs per person. In watch mode a guest gets **ชดเชยดีเลย์จอแชร์** under the player: a slider (and ±0.1 s buttons) that runs their own player up to 5 seconds ahead of, or behind, the host. The value is kept on that device only and never enters the room state, because it describes that person's connection, not the room. Moving it seeks straight away; after that the player follows the host as usual, so the offset holds without fighting the heartbeat.
+`/discord` is a guide people can read and share (linked from the home footer, the invite dialog and the offset control itself). It covers the two ways to run a room next to a call: everyone opens the room themselves and Discord carries only the voices — no delay to fix — or the host shares a screen, in which case only one audio source should be playing per person and the offset below lines the rest up.
+
+If the room is on a call — someone shares their screen in Discord, Meet or Zoom — the stream reaches everyone a little late, and how late differs per person. In watch mode a guest gets **ชดเชยดีเลย์จอแชร์** under the player: a slider (and ±0.1 s buttons) that runs their own player up to 5 seconds ahead of, or behind, the host. A shared screen arrives late, so that case moves the slider to the left — the guide spells out which way to go by what you hear first. The value is kept on that device only and never enters the room state, because it describes that person's connection, not the room. Moving it seeks straight away; after that the player follows the host as usual, so the offset holds without fighting the heartbeat.
 
 ## Party games
 

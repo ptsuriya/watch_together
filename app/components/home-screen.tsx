@@ -215,6 +215,8 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
             <p>
               <UserX size={16} aria-hidden="true" /> ห้องอยู่ตราบที่โฮสต์ยังเปิดหน้าไว้ ไม่เก็บประวัติการดูและไม่ต้องใช้บัญชี
               {" · "}
+              <Link href="/discord" className="footer-link">ดูด้วยกันผ่าน Discord</Link>
+              {" · "}
               <Link href="/privacy" className="footer-link">ความเป็นส่วนตัว</Link>
             </p>
           </div>
