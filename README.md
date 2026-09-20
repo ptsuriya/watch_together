@@ -6,7 +6,9 @@ Private YouTube rooms in three modes, styled with the KUMA honey-bear sticker th
 | --- | --- | --- |
 | **Watch together** (`watch`) | Video \| notes on top, members \| up next below | Same layout; their player follows the host. Anyone can queue, play, pause and skip; the notes hold the lyrics and the host can open them to everyone. |
 | **Remote** (`remote`) | The shared TV or shared screen: the video takes the space, the QR stays in view, the queue shows the next few songs | A phone remote: add songs, play/pause, skip |
-| **Karaoke** (`karaoke`) | Remote, plus the current key on screen and emoji flying up from the phones | Remote, plus key −/+, reset and an emoji pad |
+| **Karaoke** (`karaoke`) | Remote, plus the current key on screen and emoji flying up from the phones | Remote, plus key −/+ (whole or half steps), reset and an emoji pad |
+
+The host decides who may change the key: only the host, only whoever queued the song, or anyone in the room.
 
 Songs crossfade into each other in every mode.
 

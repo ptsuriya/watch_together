@@ -119,7 +119,8 @@
   }
 
   async function setKey(value) {
-    semitones = Math.max(-KEY_RANGE, Math.min(KEY_RANGE, Math.round(value)));
+    // Keys move in half semitones; the pitch shifter takes fractions happily.
+    semitones = Math.max(-KEY_RANGE, Math.min(KEY_RANGE, Math.round(value * 2) / 2));
     if (semitones === 0 && !source) {
       post("status", { semitones, processing: false });
       return;

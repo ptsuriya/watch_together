@@ -2,6 +2,8 @@
 
 import { Music2, PencilLine } from "lucide-react";
 import type { RealtimeStatus } from "../../lib/room-realtime";
+import { mayChangeKey } from "../../lib/room-state";
+import { ChatBar, ChatLog, type ChatMessage } from "./chat";
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
 import { EmojiPad } from "./reactions";
 import { KeyControl } from "./room-panels";
@@ -9,13 +11,16 @@ import type { RoomModel } from "./room-model";
 import { Art, VideoThumb } from "./ui";
 
 /** Remote and karaoke, guest side: a phone remote for the host's screen. */
-export function RemoteRoom({ model, onRename, onReact }: {
+export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
   model: RoomModel;
+  messages: ChatMessage[];
   onRename: () => void;
   onReact: (emoji: string) => void;
+  onChat: (text: string) => void;
 }) {
   const { state, dispatch, selfName } = model;
   const karaoke = state.mode === "karaoke";
+  const canChangeKey = mayChangeKey(state, selfName);
   const mine = state.queue.findIndex((item) => item.addedBy === selfName);
 
   return (
@@ -43,7 +48,13 @@ export function RemoteRoom({ model, onRename, onReact }: {
       {karaoke && (
         <section className="card remote-key" aria-labelledby="remote-key-title">
           <h2 id="remote-key-title">ปรับคีย์เพลงที่กำลังเล่น</h2>
-          <KeyControl value={state.key} dispatch={dispatch} large />
+          {canChangeKey ? <KeyControl value={state.key} dispatch={dispatch} large /> : (
+            <p className="key-locked">
+              {state.keyControl === "owner"
+                ? "โฮสต์ให้เฉพาะคนที่ขอเพลงนี้ปรับคีย์ได้"
+                : "โฮสต์ปรับคีย์เอง"}
+            </p>
+          )}
           <p className="hint">
             {state.keyHelper
               ? "ครึ่งเสียงต่อครั้ง เพลงใหม่เริ่มที่คีย์ต้นฉบับ"
@@ -64,6 +75,14 @@ export function RemoteRoom({ model, onRename, onReact }: {
         <AddVideoForm onAdd={model.addVideo} submitLabel={karaoke ? "ขอเพลง" : "เข้าคิว"} />
         <YouTubeSearch karaoke={karaoke} />
       </section>
+
+      {state.chat && (
+        <section className="card remote-chat" aria-labelledby="remote-chat-title">
+          <h2 id="remote-chat-title">ส่งข้อความขึ้นจอ</h2>
+          <ChatBar onSend={onChat} />
+          <ChatLog messages={messages} selfName={selfName} />
+        </section>
+      )}
 
       <section className="card remote-queue" aria-labelledby="remote-queue-title">
         <div className="card-head">

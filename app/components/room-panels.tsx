@@ -3,12 +3,13 @@
 import { QRCodeSVG } from "qrcode.react";
 import {
   AArrowDown, AArrowUp, Check, Copy, Crown, Maximize, Maximize2, Mic, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
-  UserRound, UsersRound,
+  MessageSquare, MessageSquareOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
 import {
-  CROSSFADE_OPTIONS, formatKey, KEY_RANGE, MAX_NOTES, type RoomIntent, type RoomMode,
+  CROSSFADE_OPTIONS, formatKey, KEY_CONTROL_OPTIONS, KEY_RANGE, MAX_NOTES,
+  type KeyControl as KeyControlMode, type RoomIntent, type RoomMode,
 } from "../../lib/room-state";
 import { MODE_LABELS, type RoomModel } from "./room-model";
 import { Art, Avatar, Brand, Dialog, EmptyNote } from "./ui";
@@ -311,6 +312,7 @@ export function KeyControl({ value, dispatch, large = false }: {
 }) {
   return (
     <div className={`key-control${large ? " key-control-lg" : ""}`}>
+
       <div className="key-row">
         <button type="button" className="btn btn-secondary key-btn" onClick={() => dispatch({ kind: "key", step: -1 })} disabled={value <= -KEY_RANGE} aria-label="ลดคีย์ครึ่งเสียง">
           <Minus size={large ? 28 : 20} aria-hidden="true" />
@@ -325,10 +327,48 @@ export function KeyControl({ value, dispatch, large = false }: {
           {large && <span>เพิ่มคีย์</span>}
         </button>
       </div>
+      <div className="key-fine">
+        <button type="button" onClick={() => dispatch({ kind: "key", step: -0.5 })} disabled={value <= -KEY_RANGE}>−0.5</button>
+        <span>ครึ่งขั้น</span>
+        <button type="button" onClick={() => dispatch({ kind: "key", step: 0.5 })} disabled={value >= KEY_RANGE}>+0.5</button>
+      </div>
       <button type="button" className="key-reset" onClick={() => dispatch({ kind: "key", step: 0 })} disabled={value === 0}>
         <RotateCcw size={15} aria-hidden="true" /> กลับคีย์ต้นฉบับ
       </button>
     </div>
+  );
+}
+
+const KEY_CONTROL_LABELS: Record<KeyControlMode, string> = {
+  everyone: "ทุกคนในห้อง",
+  owner: "คนที่ขอเพลงนั้น",
+  host: "โฮสต์เท่านั้น",
+};
+
+export function KeyControlSelect({ value, dispatch }: { value: KeyControlMode; dispatch: (intent: RoomIntent) => void }) {
+  const selectId = useId();
+  return (
+    <span className="crossfade-select">
+      <label htmlFor={selectId}>ใครปรับคีย์ได้</label>
+      <select id={selectId} className="field" value={value} onChange={(event) => dispatch({ kind: "keyControl", value: event.target.value as KeyControlMode })}>
+        {KEY_CONTROL_OPTIONS.map((option) => <option key={option} value={option}>{KEY_CONTROL_LABELS[option]}</option>)}
+      </select>
+    </span>
+  );
+}
+
+export function ChatToggle({ enabled, dispatch }: { enabled: boolean; dispatch: (intent: RoomIntent) => void }) {
+  return (
+    <button
+      type="button"
+      className={`pill notes-toggle${enabled ? " is-on" : ""}`}
+      aria-pressed={enabled}
+      onClick={() => dispatch({ kind: "chat", enabled: !enabled })}
+      title={enabled ? "ปิดข้อความวิ่งบนจอ" : "เปิดข้อความวิ่งบนจอ"}
+    >
+      {enabled ? <MessageSquare size={16} aria-hidden="true" /> : <MessageSquareOff size={16} aria-hidden="true" />}
+      ข้อความวิ่ง
+    </button>
   );
 }
 

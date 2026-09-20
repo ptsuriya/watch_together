@@ -36,21 +36,34 @@ export type RoomState = {
   crossfade: number;
   /** The host screen has the key-change extension, so key buttons change the sound (not only the number). */
   keyHelper: boolean;
+  /** Messages from phones fly across the screen. */
+  chat: boolean;
+  /** Who may change the key: the host alone, the person who queued the song, or anyone in the room. */
+  keyControl: KeyControl;
 };
+
+/** 0 resets to the original key; the rest move a whole or half semitone. */
+export type KeyStep = -1 | -0.5 | 0 | 0.5 | 1;
+export const KEY_STEPS = [-1, -0.5, 0, 0.5, 1] as const satisfies readonly KeyStep[];
+
+export type KeyControl = "host" | "owner" | "everyone";
+export const KEY_CONTROL_OPTIONS = ["everyone", "owner", "host"] as const satisfies readonly KeyControl[];
 
 export type RoomIntent =
   | { kind: "add"; item: QueueItem }
   | { kind: "play" }
   | { kind: "pause" }
   | { kind: "next" }
-  | { kind: "key"; step: -1 | 0 | 1 }
+  | { kind: "key"; step: KeyStep; from?: string }
   | { kind: "remove"; itemId: string }
   | { kind: "jump"; itemId: string }
   | { kind: "notes"; text: string }
   | { kind: "mode"; mode: RoomMode }
   | { kind: "playback"; playing: boolean }
   | { kind: "notesShared"; shared: boolean }
-  | { kind: "crossfade"; seconds: number };
+  | { kind: "crossfade"; seconds: number }
+  | { kind: "chat"; enabled: boolean }
+  | { kind: "keyControl"; value: KeyControl };
 
 /** What a guest may ask the host to do. Everything else is host-only; "notes" only while the host shares them. */
 export type GuestIntent = Extract<RoomIntent, { kind: "add" | "play" | "pause" | "next" | "key" | "notes" }>;
@@ -60,13 +73,15 @@ export type RoomEvent =
   | { kind: "state"; state: RoomState }
   | { kind: "state:request"; fromHost?: boolean }
   | { kind: "state:recover"; state: RoomState }
-  | { kind: "react"; emoji: string; from: string };
+  | { kind: "react"; emoji: string; from: string }
+  | { kind: "chat"; text: string; from: string };
 
 export const MAX_QUEUE = 100;
 export const MAX_NOTES = 20_000;
 export const KEY_RANGE = 12;
 export const CROSSFADE_OPTIONS = [0, 3, 6, 10] as const;
 export const DEFAULT_CROSSFADE = 6;
+export const MAX_CHAT = 80;
 export const REACTIONS = ["👏", "🔥", "😍", "😂", "🎉", "🐻", "❤️", "🍯", "🎤", "💯"] as const;
 
 export const VIDEO_ID_PATTERN = /^[\w-]{11}$/;
@@ -78,7 +93,7 @@ export function isVideoId(value: unknown): value is string {
 export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
-    notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false,
+    notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
   };
 }
 
@@ -90,9 +105,15 @@ export function thumbnailUrl(videoId: string) {
   return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 }
 
+/** Keys move in half semitones, so keep them on that grid and inside the range. */
+export function clampKey(key: number) {
+  return Math.max(-KEY_RANGE, Math.min(KEY_RANGE, Math.round(key * 2) / 2));
+}
+
 export function formatKey(key: number) {
+  const size = Number.isInteger(key) ? String(Math.abs(key)) : Math.abs(key).toFixed(1);
   if (key === 0) return "0";
-  return key > 0 ? `+${key}` : `−${Math.abs(key)}`;
+  return key > 0 ? `+${size}` : `−${size}`;
 }
 
 export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
@@ -128,7 +149,7 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     }
     case "key": {
       if (state.mode !== "karaoke") return state;
-      const key = intent.step === 0 ? 0 : Math.max(-KEY_RANGE, Math.min(KEY_RANGE, state.key + intent.step));
+      const key = intent.step === 0 ? 0 : clampKey(state.key + intent.step);
       return key === state.key ? state : { ...state, key };
     }
     case "notes": {
@@ -143,11 +164,30 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       const seconds = parseCrossfade(intent.seconds);
       return seconds === state.crossfade ? state : { ...state, crossfade: seconds };
     }
+    case "chat":
+      return intent.enabled === state.chat ? state : { ...state, chat: intent.enabled };
+    case "keyControl":
+      return intent.value === state.keyControl ? state : { ...state, keyControl: intent.value };
   }
 }
 
 function parseCrossfade(value: unknown) {
   return CROSSFADE_OPTIONS.find((option) => option === value) ?? DEFAULT_CROSSFADE;
+}
+
+function parseKeyControl(value: unknown): KeyControl {
+  return KEY_CONTROL_OPTIONS.find((option) => option === value) ?? "everyone";
+}
+
+/** Whether a guest with this display name may change the key right now. */
+export function mayChangeKey(state: RoomState, from: string | undefined) {
+  if (state.keyControl === "everyone") return true;
+  if (state.keyControl === "owner") return Boolean(from) && from === state.nowPlaying?.addedBy;
+  return false;
+}
+
+export function sanitizeChat(text: unknown) {
+  return typeof text === "string" ? text.replace(/\s+/g, " ").trim().slice(0, MAX_CHAT) : "";
 }
 
 export function isReaction(value: unknown): value is (typeof REACTIONS)[number] {
@@ -186,7 +226,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     ? value.queue.slice(0, MAX_QUEUE).flatMap((item) => sanitizeItem(item) ?? [])
     : [];
   const position = typeof value.position === "number" && Number.isFinite(value.position) ? Math.max(0, value.position) : 0;
-  const key = typeof value.key === "number" && Number.isInteger(value.key) ? Math.max(-KEY_RANGE, Math.min(KEY_RANGE, value.key)) : 0;
+  const key = typeof value.key === "number" && Number.isFinite(value.key) ? clampKey(value.key) : 0;
   return {
     session: text(value.session, 40),
     mode,
@@ -199,6 +239,8 @@ export function sanitizeState(value: unknown): RoomState | null {
     notesShared: value.notesShared === true,
     crossfade: parseCrossfade(value.crossfade),
     keyHelper: value.keyHelper === true,
+    chat: value.chat !== false,
+    keyControl: parseKeyControl(value.keyControl),
   };
 }
 
@@ -213,8 +255,10 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
     case "pause":
     case "next":
       return { kind: value.kind };
-    case "key":
-      return value.step === -1 || value.step === 0 || value.step === 1 ? { kind: "key", step: value.step } : null;
+    case "key": {
+      const step = KEY_STEPS.find((option) => option === value.step);
+      return step === undefined ? null : { kind: "key", step, from: text(value.from, 32) || undefined };
+    }
     case "notes":
       return typeof value.text === "string" ? { kind: "notes", text: value.text.slice(0, MAX_NOTES) } : null;
     default:

@@ -653,6 +653,30 @@ select.field { padding-right: 8px; }
   box-shadow: var(--shadow);
   animation: emoji-name 2.6s ease forwards;
 }
+/* container-type lets a message travel exactly the width of the screen it flies across, whatever that screen is. */
+.chat-flights { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; container-type: inline-size; }
+.chat-flight {
+  position: absolute; left: 100%; white-space: nowrap;
+  padding: 6px 16px; border: 2px solid var(--bark); border-radius: 999px;
+  background: rgba(253, 246, 236, 0.92); color: var(--bark); font-size: clamp(15px, 1.6vw, 21px); font-weight: 600;
+  box-shadow: 3px 3px 0 0 rgba(42, 16, 16, 0.35);
+  animation-name: chat-fly; animation-timing-function: linear; animation-fill-mode: forwards;
+}
+.chat-flight b { color: var(--amber-deep); }
+
+.chat-bar { display: flex; gap: 8px; }
+.chat-bar .field { flex: 1; min-width: 0; }
+.chat-bar-compact { padding: 0 18px 16px; }
+.chat-log { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; max-height: 168px; overflow-y: auto; }
+.chat-log li { padding: 8px 12px; border-radius: 14px; background: var(--cream); color: var(--cocoa); font-size: 14px; }
+.chat-log b { color: var(--amber-deep); }
+.chat-log-empty { display: flex; align-items: center; gap: 8px; color: var(--clay); font-size: 14px; }
+.room-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.key-locked {
+  padding: 12px; border: 2px dashed var(--bark); border-radius: 16px;
+  background: rgba(253, 246, 236, 0.6); color: var(--cocoa); font-size: 15px; text-align: center;
+}
+
 .emoji-pad { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .emoji-button {
   display: grid; place-items: center; aspect-ratio: 1; padding: 0;
@@ -675,6 +699,16 @@ select.field { padding-right: 8px; }
 .key-value strong { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .key-control-lg .key-btn { flex: 1; flex-direction: column; gap: 2px; width: auto; height: 76px; border-radius: 22px; font-size: 14px; }
 .key-control-lg .key-value strong { font-size: 52px; }
+.key-fine { display: flex; align-items: center; gap: 8px; color: var(--clay); font-size: 13px; font-weight: 600; }
+.key-fine button {
+  min-width: 52px; padding: 4px 10px;
+  border: 2px solid var(--bark); border-radius: 999px; background: var(--white); color: var(--bark);
+  font-size: 14px; font-weight: 700;
+}
+.key-fine button:hover:not(:disabled) { background: var(--honey); }
+.key-fine button:disabled { opacity: 0.4; }
+.remote-key .key-fine button { min-width: 64px; min-height: 40px; }
+
 .key-reset {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
   border: 0; background: none; color: var(--amber-deep);
@@ -816,6 +850,10 @@ select.field { padding-right: 8px; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 @keyframes float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -8px; } }
 @keyframes toast-in { from { opacity: 0; translate: 0 8px; } }
+@keyframes chat-fly {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100cqw - 100%)); }
+}
 @keyframes emoji-fly {
   0% { opacity: 0; translate: 0 0; scale: 0.6; }
   12% { opacity: 1; scale: 1; }

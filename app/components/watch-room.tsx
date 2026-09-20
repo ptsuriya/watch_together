@@ -2,8 +2,9 @@
 
 import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
+import { ChatBar, ChatFlights, type ChatMessage } from "./chat";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
-import { CrossfadeSelect, MemberList, NotesPanel } from "./room-panels";
+import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art } from "./ui";
 
@@ -11,13 +12,17 @@ import { Art } from "./ui";
 export function WatchRoom({
   model,
   player,
+  messages,
   onExpandNotes,
   onInvite,
+  onChat,
 }: {
   model: RoomModel;
   player: ReactNode;
+  messages: ChatMessage[];
   onExpandNotes: () => void;
   onInvite: () => void;
+  onChat: (text: string) => void;
 }) {
   const { state, isHost, dispatch, members, selfId, selfName } = model;
   const memberCount = members.length || 1;
@@ -26,6 +31,7 @@ export function WatchRoom({
     <div className="watch-grid">
       <section className="card player-card" aria-label="วิดีโอ">
         <div className="player-slot">
+          {state.chat && <ChatFlights messages={messages} />}
           {state.nowPlaying ? player : (
             <div className="player-empty">
               <Art name="board" className="player-empty-art" sizes="180px" priority />
@@ -42,6 +48,7 @@ export function WatchRoom({
           </div>
           <PlaybackButtons state={state} dispatch={dispatch} />
         </div>
+        {state.chat && <ChatBar onSend={onChat} compact />}
       </section>
 
       <NotesPanel notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onExpand={onExpandNotes} />
@@ -60,7 +67,12 @@ export function WatchRoom({
       <section className="card queue-card" aria-labelledby="queue-title">
         <div className="card-head">
           <h2 id="queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
-          {isHost && <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />}
+          {isHost && (
+            <div className="room-settings">
+              <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
+              <ChatToggle enabled={state.chat} dispatch={dispatch} />
+            </div>
+          )}
         </div>
         <AddVideoForm onAdd={model.addVideo} />
         <QueueList items={state.queue} selfName={selfName} isHost={isHost} dispatch={dispatch} emptyText="ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย" />

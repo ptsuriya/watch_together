@@ -5,12 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  createRoomState, hasContent, isReaction, reduceRoom, sanitizeGuestIntent, sanitizeState,
+  createRoomState, hasContent, isReaction, mayChangeKey, reduceRoom, sanitizeChat, sanitizeGuestIntent, sanitizeState,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { lookupVideo, parseYouTubeId } from "../lib/youtube";
 import { HomeScreen } from "./components/home-screen";
+import { CHAT_FLIGHT_MS, CHAT_LANES, CHAT_LOG_SIZE, type ChatMessage } from "./components/chat";
 import { KaraokeSetupDialog } from "./components/key-helper";
 import { BURST_LIFETIME_MS, type EmojiBurst, makeBurst } from "./components/reactions";
 import { RemoteRoom, WaitingRoom } from "./components/remote-room";
@@ -30,6 +31,7 @@ const HEARTBEAT_WATCHING_MS = 4000;
 const HEARTBEAT_IDLE_MS = 15_000;
 const TOAST_MS = 4000;
 const MAX_BURSTS = 8;
+const CHAT_COOLDOWN_MS = 1500;
 const SKIP_AFTER_ERROR_MS = 2500;
 
 type DialogKind = "invite" | "name" | "notes" | "karaoke";
@@ -74,6 +76,7 @@ export default function RoomClient({
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [keyFlash, setKeyFlash] = useState(0);
   const [bursts, setBursts] = useState<EmojiBurst[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [appOrigin, setAppOrigin] = useState("");
   const shellRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
@@ -88,6 +91,8 @@ export default function RoomClient({
   const toastIdRef = useRef(0);
   const connectedRef = useRef(false);
   const burstIdRef = useRef(0);
+  const messageIdRef = useRef(0);
+  const chatSentAtRef = useRef(0);
   const keyHelperRef = useRef(false);
   const karaokeSetupShownRef = useRef(false);
   const supabaseConfig = useMemo(() => ({ url: supabaseUrl, key: supabaseKey }), [supabaseKey, supabaseUrl]);
@@ -155,9 +160,30 @@ export default function RoomClient({
       pushToast("ยังเชื่อมต่อห้องไม่ได้ รอสักครู่แล้วลองอีกครั้ง");
       return;
     }
-    const guestIntent = sanitizeGuestIntent(intent);
+    const guestIntent = sanitizeGuestIntent(intent.kind === "key" ? { ...intent, from: selfNameRef.current } : intent);
     if (guestIntent) broadcastRef.current({ kind: "intent", intent: guestIntent });
   }, [commit, pushToast, realtimeConfigured]);
+
+  const pushMessage = useCallback((text: string, from: string) => {
+    messageIdRef.current += 1;
+    const message: ChatMessage = { id: messageIdRef.current, text, from, at: Date.now(), lane: messageIdRef.current % CHAT_LANES };
+    setMessages((current) => [...current.slice(-(CHAT_LOG_SIZE - 1)), message]);
+    // Kept a little longer than the flight so the phone's list does not empty while a message is still on screen.
+    window.setTimeout(() => setMessages((current) => current.filter((item) => item.id !== message.id)), CHAT_FLIGHT_MS * 2);
+  }, []);
+
+  const sendChat = useCallback((input: string) => {
+    const text = sanitizeChat(input);
+    if (!text || !stateRef.current.chat) return;
+    if (Date.now() - chatSentAtRef.current < CHAT_COOLDOWN_MS) {
+      pushToast("ส่งถี่ไปนิด รอสักครู่แล้วส่งใหม่");
+      return;
+    }
+    chatSentAtRef.current = Date.now();
+    const from = selfNameRef.current;
+    pushMessage(text, from);
+    if (realtimeConfigured) broadcastRef.current({ kind: "chat", text, from });
+  }, [pushMessage, pushToast, realtimeConfigured]);
 
   const sendReaction = useCallback((emoji: string) => {
     if (!isReaction(emoji)) return;
@@ -215,11 +241,18 @@ export default function RoomClient({
         if (!intent) return;
         // Guests write the notes only while the host has shared them.
         if (intent.kind === "notes" && !stateRef.current.notesShared) return;
+        // The host decides who may change the key: only the host, only whoever queued the song, or anyone.
+        if (intent.kind === "key" && !mayChangeKey(stateRef.current, intent.from)) return;
         commit(intent);
         return;
       }
       case "react": {
         if (isReaction(event.emoji)) pushBurst(event.emoji, typeof event.from === "string" ? event.from.slice(0, 32) : "ใครบางคน");
+        return;
+      }
+      case "chat": {
+        const text = sanitizeChat(event.text);
+        if (text && stateRef.current.chat) pushMessage(text, sanitizeChat(event.from).slice(0, 32) || "ใครบางคน");
         return;
       }
       case "state": {
@@ -256,7 +289,7 @@ export default function RoomClient({
         return;
       }
     }
-  }, [broadcastStateNow, commit, confirmPendingAdds, pushBurst, replaceState]);
+  }, [broadcastStateNow, commit, confirmPendingAdds, pushBurst, pushMessage, replaceState]);
 
   const handleResync = useCallback(({ isHost: selfIsHost }: RoomSelf) => {
     if (!selfIsHost) broadcastRef.current({ kind: "state:request" });
@@ -367,6 +400,7 @@ export default function RoomClient({
     setResume(undefined);
     setToasts([]);
     setBursts([]);
+    setMessages([]);
   }
 
   function createRoom(mode: RoomMode) {
@@ -475,7 +509,16 @@ export default function RoomClient({
   let view;
   if (waiting) view = <WaitingRoom status={status} hostOnline={hostOnline} roomCode={roomCode} />;
   else if (state.mode === "watch") {
-    view = <WatchRoom model={model} player={player} onExpandNotes={() => setDialog("notes")} onInvite={() => setDialog("invite")} />;
+    view = (
+      <WatchRoom
+        model={model}
+        player={player}
+        messages={messages}
+        onExpandNotes={() => setDialog("notes")}
+        onInvite={() => setDialog("invite")}
+        onChat={sendChat}
+      />
+    );
   } else if (isHost) {
     view = (
       <TvRoom
@@ -484,12 +527,24 @@ export default function RoomClient({
         toasts={toasts}
         keyFlash={keyFlash}
         bursts={bursts}
+        messages={messages}
         keyHelperStatus={keyHelperStatus}
         onReact={sendReaction}
+        onChat={sendChat}
         onOpenKaraokeSetup={() => setDialog("karaoke")}
       />
     );
-  } else view = <RemoteRoom model={model} onRename={() => setDialog("name")} onReact={sendReaction} />;
+  } else {
+    view = (
+      <RemoteRoom
+        model={model}
+        messages={messages}
+        onRename={() => setDialog("name")}
+        onReact={sendReaction}
+        onChat={sendChat}
+      />
+    );
+  }
 
   return (
     <div ref={shellRef} className={`room-shell mode-${state.mode}${tvScreen ? " is-tv" : ""}`}>

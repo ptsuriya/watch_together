@@ -3,10 +3,11 @@
 import type { ReactNode } from "react";
 import { formatKey } from "../../lib/room-state";
 import type { HelperStatus } from "../../lib/karaoke-key";
+import { ChatFlights, type ChatMessage } from "./chat";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
-import { CrossfadeSelect, KeyControl, RoomQr } from "./room-panels";
+import { ChatToggle, CrossfadeSelect, KeyControl, KeyControlSelect, RoomQr } from "./room-panels";
 import type { RoomModel, Toast } from "./room-model";
 import { Art, ToastStack } from "./ui";
 
@@ -22,8 +23,10 @@ export function TvRoom({
   toasts,
   keyFlash,
   bursts,
+  messages,
   keyHelperStatus,
   onReact,
+  onChat,
   onOpenKaraokeSetup,
 }: {
   model: RoomModel;
@@ -31,8 +34,10 @@ export function TvRoom({
   toasts: Toast[];
   keyFlash: number;
   bursts: EmojiBurst[];
+  messages: ChatMessage[];
   keyHelperStatus: HelperStatus;
   onReact: (emoji: string) => void;
+  onChat: (text: string) => void;
   onOpenKaraokeSetup: () => void;
 }) {
   const { state, dispatch, selfName, inviteUrl, roomCode } = model;
@@ -72,6 +77,7 @@ export function TvRoom({
         )}
         {karaoke && keyFlash > 0 && <p key={keyFlash} className="key-pop" aria-hidden="true">คีย์ {formatKey(state.key)}</p>}
         <EmojiRain bursts={bursts} />
+        {state.chat && <ChatFlights messages={messages} />}
       </section>
 
       <aside className="tv-side" aria-label="คิวและการควบคุม">
@@ -98,7 +104,10 @@ export function TvRoom({
           <div className="card-head">
             <h2 id="tv-queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
           </div>
-          <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
+          <div className="room-settings">
+            <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
+            <ChatToggle enabled={state.chat} dispatch={dispatch} />
+          </div>
           <QueueList items={state.queue} selfName={selfName} isHost dispatch={dispatch} limit={UP_NEXT_LIMIT} emptyText="ยังไม่มีเพลงต่อคิว" />
           <AddVideoForm onAdd={model.addVideo} compact label="เพิ่มลิงก์ YouTube จากเครื่องนี้" />
         </section>
@@ -106,6 +115,7 @@ export function TvRoom({
         {karaoke && (
           <section className="card side-key" aria-label="คีย์และอีโมจิ">
             <KeyControl value={state.key} dispatch={dispatch} />
+            <KeyControlSelect value={state.keyControl} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
             <EmojiPad onSend={onReact} compact />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
