@@ -680,7 +680,9 @@ select.field { padding-right: 8px; }
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 18px 16px;
   border-top: 2px solid rgba(42, 16, 16, 0.12);
 }
-.watch-social .emoji-pad { flex: 1 1 240px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+/* One row of fixed-size buttons, scrolling sideways if the card is narrow: stretching them looked comical. */
+.watch-social .emoji-pad { display: flex; flex: 0 1 auto; flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.watch-social .emoji-button { flex: none; width: 44px; height: 44px; aspect-ratio: auto; border-radius: 14px; font-size: 24px; }
 .side-emoji { padding: 12px; }
 .chat-log { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; max-height: 168px; overflow-y: auto; }
 .chat-log li { padding: 8px 12px; border-radius: 14px; background: var(--cream); color: var(--cocoa); font-size: 14px; }
