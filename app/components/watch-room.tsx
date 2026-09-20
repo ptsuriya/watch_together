@@ -49,10 +49,12 @@ export function WatchRoom({
   const { state, isHost, canManage, dispatch, members, selfId, selfName } = model;
   const memberCount = members.length || 1;
   const karaoke = state.mode === "singalong";
+  // Karaoke videos carry their own lyrics, so a sing-along gives the whole row to the video instead.
+  const showNotes = state.notesOn && !karaoke;
   const canChangeKey = canManage || mayChangeKey(state, selfName);
 
   return (
-    <div className={`watch-grid${state.notesOn ? "" : " no-notes"}`}>
+    <div className={`watch-grid${showNotes ? "" : " no-notes"}${karaoke ? " is-singalong" : ""}`}>
       <section className="card player-card" aria-label="วิดีโอ">
         <div className="player-slot">
           {state.nowPlaying ? player : (
@@ -93,7 +95,7 @@ export function WatchRoom({
         </div>
       </section>
 
-      {state.notesOn && (
+      {showNotes && (
         <NotesPanel notes={state.notes} isHost={isHost} canManage={canManage} shared={state.notesShared} dispatch={dispatch} onExpand={onExpandNotes} />
       )}
 
@@ -121,7 +123,7 @@ export function WatchRoom({
           {canManage && (
             <div className="room-settings">
               <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
-              <NotesToggle enabled={state.notesOn} dispatch={dispatch} />
+              {!karaoke && <NotesToggle enabled={state.notesOn} dispatch={dispatch} />}
               <ChatToggle enabled={state.chat} dispatch={dispatch} />
               <PartyButton state={state} onOpen={onOpenParty} />
             </div>
