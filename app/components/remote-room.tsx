@@ -6,8 +6,8 @@ import { mayChangeKey } from "../../lib/room-state";
 import { ChatBar, ChatLog, type ChatMessage } from "./chat";
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
 import { EmojiPad } from "./reactions";
+import { MODE_LABELS, type RoomModel } from "./room-model";
 import { KeyControl } from "./room-panels";
-import type { RoomModel } from "./room-model";
 import { Art, VideoThumb } from "./ui";
 
 /** Remote and karaoke, guest side: a phone remote for the host's screen. */
@@ -28,7 +28,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
       <section className="remote-hello">
         <Art name={karaoke ? "party" : "phone"} className="remote-hello-bear" sizes="96px" priority />
         <div>
-          <p>สวัสดี {selfName}</p>
+          <p>สวัสดี {selfName} <span className="pill pill-honey">โหมด{MODE_LABELS[state.mode].name}</span></p>
           <strong>{karaoke ? "มือถือนี้คือไมค์ของคุณ ขอเพลงแล้วปรับคีย์ได้เลย" : "มือถือนี้คือรีโมทของจอกลาง"}</strong>
         </div>
       </section>

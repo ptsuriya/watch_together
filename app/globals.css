@@ -428,10 +428,8 @@ select.field { padding-right: 8px; }
 }
 @media (max-width: 480px) {
   .room-code { padding: 4px 8px; font-size: 12px; }
-  .mode-pill { padding: 6px 9px; }
-  .mode-pill-label {
-    position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
-  }
+  /* An icon on its own looked like a button nobody could press; the guest screens name the mode in words instead. */
+  .mode-pill { display: none; }
 }
 
 .room-main { display: flex; flex: 1; flex-direction: column; min-height: 0; }
@@ -777,7 +775,8 @@ select.field { padding-right: 8px; }
 .remote-shell { display: grid; gap: 18px; width: 100%; max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
 .remote-hello { display: flex; align-items: center; gap: 12px; }
 .remote-hello-bear { width: 72px; height: auto; flex: none; }
-.remote-hello p { color: var(--clay); font-size: 14px; }
+.remote-hello p { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--clay); font-size: 14px; }
+.remote-hello .pill { padding: 2px 10px; font-size: 13px; }
 .remote-hello strong { display: block; color: var(--bark); font-size: 17px; font-weight: 700; line-height: 1.35; }
 .remote-now { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 14px; padding: 14px; }
 .remote-thumb {
