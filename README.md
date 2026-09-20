@@ -43,6 +43,10 @@ npm run dev
 
 People usually scan the QR on the host screen with their phone camera. The home page also has **สแกน QR ด้วยกล้อง**, which opens the camera in the page itself: Chrome and Edge decode with the browser's own `BarcodeDetector`, and everywhere else (Safari on iOS, for one) a small decoder is fetched only when the scanner opens. The code field accepts a whole invite link too.
 
+## Who runs the room
+
+The host can hand the run of the room to anyone in it: open the people dialog (the QR button) and press the shield next to a name. A co-host gets the queue controls and the room's settings — crossfade, notes, messages, who may change the key — everywhere they are, including their phone. Only the host hands this out or takes it back, and the host still decides it: every request goes through the host's page, which checks who asked before applying it.
+
 ## Crossfade
 
 Every mode keeps two YouTube players. When a song is within the crossfade of its end and something is queued, the next song starts on the second player while the first fades out; a manual skip uses a short 1.5 s fade instead. The host picks 0 (off), 3, 6 or 10 seconds next to the queue, and the setting travels with the room state so guests fade at the same time. iOS ignores `setVolume`, so players there switch without an overlap.

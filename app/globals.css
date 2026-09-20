@@ -842,6 +842,12 @@ select.field { padding-right: 8px; }
 }
 .invite-link span { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .invite-code { color: var(--clay); text-align: center; }
+.invite-members { display: grid; gap: 8px; padding-top: 12px; border-top: 2px dashed var(--line); }
+.invite-members h3 { color: var(--bark); font-size: 16px; font-weight: 800; }
+.invite-hint { color: var(--clay); font-size: 13px; line-height: 1.6; }
+.host-badge.is-cohost { background: var(--sand); color: var(--bark); }
+.member-list .icon-btn { width: 36px; height: 36px; }
+.remote-manage { display: grid; gap: 12px; padding: 18px; background: var(--honey); }
 .invite-code strong { color: var(--bark); letter-spacing: 0.04em; }
 
 .dialog-wide { width: min(980px, calc(100vw - 32px)); height: min(90dvh, 920px); }

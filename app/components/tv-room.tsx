@@ -40,7 +40,7 @@ export function TvRoom({
   onChat: (text: string) => void;
   onOpenKaraokeSetup: () => void;
 }) {
-  const { state, dispatch, selfName, inviteUrl, roomCode } = model;
+  const { state, canManage, dispatch, selfName, inviteUrl, roomCode } = model;
   const karaoke = state.mode === "karaoke";
   const scanText = karaoke ? "สแกนเพื่อขอเพลงและปรับคีย์" : "สแกนเพื่อเพิ่มเพลง";
 
@@ -108,7 +108,7 @@ export function TvRoom({
             <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
             <ChatToggle enabled={state.chat} dispatch={dispatch} />
           </div>
-          <QueueList items={state.queue} selfName={selfName} isHost dispatch={dispatch} limit={UP_NEXT_LIMIT} emptyText="ยังไม่มีเพลงต่อคิว" />
+          <QueueList items={state.queue} selfName={selfName} isHost={canManage} dispatch={dispatch} limit={UP_NEXT_LIMIT} emptyText="ยังไม่มีเพลงต่อคิว" />
           <AddVideoForm onAdd={model.addVideo} compact label="เพิ่มลิงก์ YouTube จากเครื่องนี้" />
         </section>
 

@@ -588,7 +588,7 @@ export default function RoomClient({
       {dialog === "name" && <NameDialog name={listenerName} onSave={saveName} onClose={() => setDialog(null)} />}
       {dialog === "karaoke" && <KaraokeSetupDialog status={keyHelperStatus} onClose={() => setDialog(null)} />}
       {dialog === "notes" && (
-        <NotesDialog notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onClose={() => setDialog(null)} />
+        <NotesDialog notes={state.notes} canManage={canManage} shared={state.notesShared} dispatch={dispatch} onClose={() => setDialog(null)} />
       )}
     </div>
   );

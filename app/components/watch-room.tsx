@@ -27,7 +27,7 @@ export function WatchRoom({
   onChat: (text: string) => void;
   onReact: (emoji: string) => void;
 }) {
-  const { state, isHost, dispatch, members, selfId, selfName } = model;
+  const { state, isHost, canManage, dispatch, members, selfId, selfName } = model;
   const memberCount = members.length || 1;
 
   return (
@@ -57,7 +57,7 @@ export function WatchRoom({
       </section>
 
       {state.notesOn && (
-        <NotesPanel notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onExpand={onExpandNotes} />
+        <NotesPanel notes={state.notes} isHost={isHost} canManage={canManage} shared={state.notesShared} dispatch={dispatch} onExpand={onExpandNotes} />
       )}
 
       <section className="card members-card" aria-labelledby="members-title">
@@ -68,13 +68,20 @@ export function WatchRoom({
             <UserPlus size={16} aria-hidden="true" /> ชวนเพื่อน
           </button>
         </div>
-        <MemberList members={members} selfId={selfId} selfName={selfName} selfIsHost={isHost} />
+        <MemberList
+          members={members}
+          selfId={selfId}
+          selfName={selfName}
+          selfIsHost={isHost}
+          cohosts={state.cohosts}
+          onToggleCohost={isHost ? (memberId, enabled) => dispatch({ kind: "cohost", memberId, enabled }) : undefined}
+        />
       </section>
 
       <section className="card queue-card" aria-labelledby="queue-title">
         <div className="card-head">
           <h2 id="queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
-          {isHost && (
+          {canManage && (
             <div className="room-settings">
               <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
               <NotesToggle enabled={state.notesOn} dispatch={dispatch} />
@@ -83,7 +90,7 @@ export function WatchRoom({
           )}
         </div>
         <AddVideoForm onAdd={model.addVideo} />
-        <QueueList items={state.queue} selfName={selfName} isHost={isHost} dispatch={dispatch} emptyText="ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย" />
+        <QueueList items={state.queue} selfName={selfName} isHost={canManage} dispatch={dispatch} emptyText="ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย" />
       </section>
     </div>
   );

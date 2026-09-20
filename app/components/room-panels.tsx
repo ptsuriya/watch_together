@@ -3,7 +3,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import {
   AArrowDown, AArrowUp, Check, Copy, Crown, Maximize, Maximize2, Mic, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
-  MessageSquare, MessageSquareOff, NotebookPen, NotebookText, UserRound, UsersRound,
+  MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
@@ -92,25 +92,43 @@ export function RoomHeader({
   );
 }
 
-export function MemberList({ members, selfId, selfName, selfIsHost }: {
+export function MemberList({ members, selfId, selfName, selfIsHost, cohosts = [], onToggleCohost }: {
   members: RoomMember[];
   selfId: string | null;
   selfName: string;
   selfIsHost: boolean;
+  cohosts?: string[];
+  /** Only the host gets this: hand the run of the room to someone, or take it back. */
+  onToggleCohost?: (memberId: string, enabled: boolean) => void;
 }) {
   // Presence has not arrived yet (or the room runs without realtime): show this person alone.
   const list = members.length ? members : [{ id: selfId ?? "self", name: selfName, isHost: selfIsHost }];
   const sorted = [...list].sort((a, b) => Number(b.isHost) - Number(a.isHost));
   return (
     <ul className="member-list">
-      {sorted.map((member) => (
-        <li key={member.id}>
-          <Avatar name={member.name} tone={member.isHost ? "gold" : "honey"} />
-          <span className="member-name">{member.name}</span>
-          {(member.id === selfId || !members.length) && <em className="tag">คุณ</em>}
-          {member.isHost && <span className="host-badge"><Crown size={14} aria-hidden="true" /> โฮสต์</span>}
-        </li>
-      ))}
+      {sorted.map((member) => {
+        const cohost = cohosts.includes(member.id);
+        return (
+          <li key={member.id}>
+            <Avatar name={member.name} tone={member.isHost ? "gold" : cohost ? "sand" : "honey"} />
+            <span className="member-name">{member.name}</span>
+            {(member.id === selfId || !members.length) && <em className="tag">คุณ</em>}
+            {member.isHost && <span className="host-badge"><Crown size={14} aria-hidden="true" /> โฮสต์</span>}
+            {!member.isHost && cohost && <span className="host-badge is-cohost"><ShieldCheck size={14} aria-hidden="true" /> หัวห้องร่วม</span>}
+            {onToggleCohost && !member.isHost && (
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => onToggleCohost(member.id, !cohost)}
+                title={cohost ? `ยกเลิกสิทธิ์หัวห้องร่วมของ ${member.name}` : `ให้ ${member.name} เป็นหัวห้องร่วม`}
+                aria-label={cohost ? `ยกเลิกสิทธิ์หัวห้องร่วมของ ${member.name}` : `ให้ ${member.name} เป็นหัวห้องร่วม`}
+              >
+                {cohost ? <ShieldOff size={16} aria-hidden="true" /> : <ShieldCheck size={16} aria-hidden="true" />}
+              </button>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -182,12 +200,15 @@ function NoteSizeControl({ index, change }: { index: number; change: (step: numb
 export function NotesPanel({
   notes,
   isHost,
+  canManage,
   shared,
   dispatch,
   onExpand,
 }: {
   notes: string;
   isHost: boolean;
+  /** The host or a co-host: may edit and may open the notes to everyone. */
+  canManage: boolean;
   /** The host lets everyone write in the notes too. */
   shared: boolean;
   dispatch: (intent: RoomIntent) => void;
@@ -196,7 +217,7 @@ export function NotesPanel({
   const inputId = useId();
   const { size, index, change } = useNoteSize();
   const [draft, write] = useNoteDraft(notes, dispatch);
-  const canEdit = isHost || shared;
+  const canEdit = canManage || shared;
 
   return (
     <section className="card notes-card" aria-labelledby={`${inputId}-title`}>
@@ -209,7 +230,7 @@ export function NotesPanel({
           </button>
         </div>
       </div>
-      {isHost && (
+      {canManage && (
         <button
           type="button"
           className={`pill notes-toggle${shared ? " is-on" : ""}`}
@@ -232,7 +253,7 @@ export function NotesPanel({
             placeholder={"แปะเนื้อเพลง ลิงก์ หรือโน้ตถึงทุกคนในห้อง…\nทุกคนเห็นทันที กด A+ ให้ตัวใหญ่ขึ้น หรือกด “ขยาย” เพื่ออ่านเต็มจอ"}
           />
           <p className="notes-meta">
-            {isHost && !shared ? "เฉพาะโฮสต์แก้ไขได้" : "ทุกคนในห้องช่วยเขียนได้"} · {draft.length.toLocaleString("th-TH")}/{MAX_NOTES.toLocaleString("th-TH")} ตัวอักษร
+            {canManage && !shared ? "เฉพาะหัวห้องแก้ไขได้" : "ทุกคนในห้องช่วยเขียนได้"} · {draft.length.toLocaleString("th-TH")}/{MAX_NOTES.toLocaleString("th-TH")} ตัวอักษร
           </p>
         </>
       ) : notes.trim() ? (
@@ -246,20 +267,20 @@ export function NotesPanel({
 
 export function NotesDialog({
   notes,
-  isHost,
+  canManage,
   shared,
   dispatch,
   onClose,
 }: {
   notes: string;
-  isHost: boolean;
+  canManage: boolean;
   shared: boolean;
   dispatch: (intent: RoomIntent) => void;
   onClose: () => void;
 }) {
   const { size, index, change } = useNoteSize();
   const [draft, write] = useNoteDraft(notes, dispatch);
-  const canEdit = isHost || shared;
+  const canEdit = canManage || shared;
 
   return (
     <Dialog labelledBy="notes-dialog-title" onClose={onClose} className="dialog-wide">
@@ -425,6 +446,23 @@ export function InviteDialog({ model, onClose }: { model: RoomModel; onClose: ()
         </button>
       </div>
       <p className="invite-code">รหัสห้อง <strong>{model.roomCode}</strong></p>
+
+      <div className="invite-members">
+        <h3>คนในห้อง</h3>
+        <MemberList
+          members={model.members}
+          selfId={model.selfId}
+          selfName={model.selfName}
+          selfIsHost={model.isHost}
+          cohosts={model.state.cohosts}
+          onToggleCohost={model.isHost ? (memberId, enabled) => model.dispatch({ kind: "cohost", memberId, enabled }) : undefined}
+        />
+        {model.isHost && (
+          <p className="invite-hint">
+            กดโล่ข้างชื่อเพื่อให้เป็นหัวห้องร่วม คนนั้นจะจัดคิวและตั้งค่าห้องได้เหมือนคุณ ยกเว้นการแต่งตั้งคนอื่น
+          </p>
+        )}
+      </div>
     </Dialog>
   );
 }

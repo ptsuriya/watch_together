@@ -7,7 +7,7 @@ import { ChatBar, ChatLog, type ChatMessage } from "./chat";
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
 import { EmojiPad } from "./reactions";
 import { MODE_LABELS, type RoomModel } from "./room-model";
-import { KeyControl } from "./room-panels";
+import { ChatToggle, CrossfadeSelect, KeyControl, KeyControlSelect, NotesToggle } from "./room-panels";
 import { Art, VideoThumb } from "./ui";
 
 /** Remote and karaoke, guest side: a phone remote for the host's screen. */
@@ -18,7 +18,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
   onReact: (emoji: string) => void;
   onChat: (text: string) => void;
 }) {
-  const { state, dispatch, selfName } = model;
+  const { state, canManage, dispatch, selfName } = model;
   const karaoke = state.mode === "karaoke";
   const canChangeKey = mayChangeKey(state, selfName);
   const mine = state.queue.findIndex((item) => item.addedBy === selfName);
@@ -48,7 +48,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
       {karaoke && (
         <section className="card remote-key" aria-labelledby="remote-key-title">
           <h2 id="remote-key-title">ปรับคีย์เพลงที่กำลังเล่น</h2>
-          {canChangeKey ? <KeyControl value={state.key} dispatch={dispatch} large /> : (
+          {canChangeKey || canManage ? <KeyControl value={state.key} dispatch={dispatch} large /> : (
             <p className="key-locked">
               {state.keyControl === "owner"
                 ? "โฮสต์ให้เฉพาะคนที่ขอเพลงนี้ปรับคีย์ได้"
@@ -60,6 +60,19 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
               ? "ครึ่งเสียงต่อครั้ง เพลงใหม่เริ่มที่คีย์ต้นฉบับ"
               : "จอกลางยังไม่ได้ติดตั้งส่วนเสริมเปลี่ยนคีย์ ตัวเลขจะขึ้นจอ แต่เสียงยังไม่เปลี่ยน"}
           </p>
+        </section>
+      )}
+
+      {canManage && (
+        <section className="card remote-manage" aria-labelledby="remote-manage-title">
+          <h2 id="remote-manage-title">คุณเป็นหัวห้องร่วม</h2>
+          <p className="hint">จัดคิวและตั้งค่าห้องได้เหมือนโฮสต์</p>
+          <div className="room-settings">
+            <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
+            <NotesToggle enabled={state.notesOn} dispatch={dispatch} />
+            <ChatToggle enabled={state.chat} dispatch={dispatch} />
+          </div>
+          {karaoke && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
         </section>
       )}
 
@@ -87,7 +100,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat }: {
           <h2 id="remote-queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
           {mine >= 0 && <span className="pill pill-honey">ของคุณคิวที่ {mine + 1}</span>}
         </div>
-        <QueueList items={state.queue} selfName={selfName} isHost={false} dispatch={dispatch} emptyText="ยังไม่มีคิว เพลงของคุณจะได้เล่นต่อทันที" />
+        <QueueList items={state.queue} selfName={selfName} isHost={canManage} dispatch={dispatch} emptyText="ยังไม่มีคิว เพลงของคุณจะได้เล่นต่อทันที" />
       </section>
 
       <p className="remote-self">
