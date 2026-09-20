@@ -9,6 +9,8 @@ the video through Web Audio into [Signalsmith Stretch](https://signalsmith-audio
 `vendor/signalsmith-stretch.js`) and shifts the pitch with about 70 ms of latency. At key 0 nothing is processed.
 
 - Permissions: none beyond the content script on `https://www.youtube-nocookie.com/embed/*`.
+- YouTube's own ads are never touched: while the player is showing an ad the pitch shift steps aside and the audio
+  goes straight through, and nothing about the ad is blocked, skipped or changed.
 - No data is collected, stored or sent anywhere. The extension has no background page and no network calls.
 
 ## Install for testing

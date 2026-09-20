@@ -6,7 +6,8 @@
 //   room -> embed: { source: "kuma-listening-party", type: "probe" }   (measures the output level, for diagnostics)
 //   embed -> room: { source: "kuma-karaoke-key", type: "ready" | "status" | "error" | "probe", ... }
 //
-// The audio only goes through Web Audio once a key other than 0 is asked for; until then YouTube plays it untouched.
+// The audio only goes through Web Audio once a key other than 0 is asked for; until then YouTube plays it untouched,
+// and YouTube's own ads always play untouched: the pitch shift steps aside while an ad is on screen.
 (() => {
   if (window === window.top) return;
 
@@ -23,6 +24,8 @@
   let stretchRequest = null;
   let stretch = null;
   let meter = null;
+  let adPlaying = false;
+  let adObserver = null;
 
   function post(type, extra = {}) {
     // The payload carries nothing private, and the room checks that it comes from the YouTube embed origin.
@@ -53,6 +56,8 @@
       sourceElement = video;
     }
 
+    watchAds();
+
     if (!stretch) {
       stretchRequest ??= (async () => {
         // Load the AudioWorklet from the extension package rather than a blob: URL, which YouTube's CSP may refuse.
@@ -66,12 +71,29 @@
     }
   }
 
+  /** YouTube marks its player while an ad plays; the ad must reach the speakers exactly as YouTube sent it. */
+  function watchAds() {
+    if (adObserver) return;
+    const player = document.querySelector(".html5-video-player");
+    if (!player) return;
+    const update = () => {
+      const showing = player.classList.contains("ad-showing") || player.classList.contains("ad-interrupting");
+      if (showing === adPlaying) return;
+      adPlaying = showing;
+      if (source && stretch) route();
+    };
+    adObserver = new MutationObserver(update);
+    adObserver.observe(player, { attributes: true, attributeFilter: ["class"] });
+    update();
+  }
+
   function route() {
     source.disconnect();
     stretch.disconnect();
-    // Straight through while the song is in its original key: no processing delay.
-    const output = semitones === 0 ? source : stretch;
-    if (semitones !== 0) {
+    // Straight through while the song is in its original key or an ad is playing: no processing, no delay.
+    const shifted = semitones !== 0 && !adPlaying;
+    const output = shifted ? stretch : source;
+    if (shifted) {
       stretch.schedule({ active: true, semitones });
       source.connect(stretch);
     }
@@ -105,8 +127,9 @@
     try {
       await ensureAudioGraph();
       route();
-      const latency = semitones === 0 ? 0 : await stretch.latency();
-      post("status", { semitones, processing: semitones !== 0, latencyMs: Math.round(latency * 1000) });
+      const shifted = semitones !== 0 && !adPlaying;
+      const latency = shifted ? await stretch.latency() : 0;
+      post("status", { semitones, processing: shifted, adPlaying, latencyMs: Math.round(latency * 1000) });
     } catch (error) {
       post("error", { semitones, message: error instanceof Error ? error.message : String(error) });
     }
