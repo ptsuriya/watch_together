@@ -9,6 +9,8 @@ export type Toast = { id: number; text: string };
 export type RoomModel = {
   state: RoomState;
   isHost: boolean;
+  /** The host, or someone the host made a co-host: may run the queue and the room's settings. */
+  canManage: boolean;
   selfId: string | null;
   selfName: string;
   members: RoomMember[];

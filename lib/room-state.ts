@@ -42,7 +42,11 @@ export type RoomState = {
   chat: boolean;
   /** Who may change the key: the host alone, the person who queued the song, or anyone in the room. */
   keyControl: KeyControl;
+  /** Member ids the host has given the run of the room: queue and settings, everything but handing out this right. */
+  cohosts: string[];
 };
+
+export const MAX_COHOSTS = 10;
 
 /** 0 resets to the original key; the rest move a whole or half semitone. */
 export type KeyStep = -1 | -0.5 | 0 | 0.5 | 1;
@@ -68,13 +72,20 @@ export type RoomIntent =
   | { kind: "notesShared"; shared: boolean }
   | { kind: "crossfade"; seconds: number }
   | { kind: "chat"; enabled: boolean }
-  | { kind: "keyControl"; value: KeyControl };
+  | { kind: "keyControl"; value: KeyControl }
+  | { kind: "cohost"; memberId: string; enabled: boolean };
 
-/** What a guest may ask the host to do. Everything else is host-only; "notes" only while the host shares them. */
-export type GuestIntent = Extract<RoomIntent, { kind: "add" | "play" | "pause" | "next" | "key" | "notes" }>;
+/** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
+export const MANAGER_INTENTS = ["remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared"] as const;
+
+/** What anyone in the room may send. The host decides which ones to honour, by who asked. */
+export type GuestIntent = Extract<
+  RoomIntent,
+  { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat" | "notesOn" | "notesShared" }
+>;
 
 export type RoomEvent =
-  | { kind: "intent"; intent: GuestIntent }
+  | { kind: "intent"; intent: GuestIntent; from?: string; fromId?: string }
   | { kind: "state"; state: RoomState }
   | { kind: "state:request"; fromHost?: boolean }
   | { kind: "state:recover"; state: RoomState }
@@ -99,6 +110,7 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
     notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
+    cohosts: [],
   };
 }
 
@@ -176,6 +188,14 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return intent.enabled === state.chat ? state : { ...state, chat: intent.enabled };
     case "keyControl":
       return intent.value === state.keyControl ? state : { ...state, keyControl: intent.value };
+    case "cohost": {
+      const has = state.cohosts.includes(intent.memberId);
+      if (intent.enabled === has) return state;
+      const cohosts = intent.enabled
+        ? [...state.cohosts, intent.memberId].slice(-MAX_COHOSTS)
+        : state.cohosts.filter((id) => id !== intent.memberId);
+      return { ...state, cohosts };
+    }
   }
 }
 
@@ -185,6 +205,10 @@ function parseCrossfade(value: unknown) {
 
 function parseKeyControl(value: unknown): KeyControl {
   return KEY_CONTROL_OPTIONS.find((option) => option === value) ?? "everyone";
+}
+
+export function isManager(state: RoomState, memberId: string | null | undefined) {
+  return Boolean(memberId) && state.cohosts.includes(memberId as string);
 }
 
 /** Whether a guest with this display name may change the key right now. */
@@ -257,6 +281,9 @@ export function sanitizeState(value: unknown): RoomState | null {
     keyHelper: value.keyHelper === true,
     chat: value.chat !== false,
     keyControl: parseKeyControl(value.keyControl),
+    cohosts: Array.isArray(value.cohosts)
+      ? value.cohosts.slice(0, MAX_COHOSTS).flatMap((id) => (typeof id === "string" && id.length <= 64 ? [id] : []))
+      : [],
   };
 }
 
@@ -271,6 +298,23 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
     case "pause":
     case "next":
       return { kind: value.kind };
+    case "remove":
+    case "jump": {
+      const itemId = text(value.itemId, 64);
+      return itemId ? { kind: value.kind, itemId } : null;
+    }
+    case "mode": {
+      const mode = parseRoomMode(typeof value.mode === "string" ? value.mode : undefined);
+      return mode ? { kind: "mode", mode } : null;
+    }
+    case "crossfade":
+      return typeof value.seconds === "number" ? { kind: "crossfade", seconds: value.seconds } : null;
+    case "chat":
+      return typeof value.enabled === "boolean" ? { kind: "chat", enabled: value.enabled } : null;
+    case "notesOn":
+      return typeof value.enabled === "boolean" ? { kind: "notesOn", enabled: value.enabled } : null;
+    case "notesShared":
+      return typeof value.shared === "boolean" ? { kind: "notesShared", shared: value.shared } : null;
     case "key": {
       const step = KEY_STEPS.find((option) => option === value.step);
       return step === undefined ? null : { kind: "key", step, from: text(value.from, 32) || undefined };

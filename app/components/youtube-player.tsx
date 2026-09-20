@@ -155,6 +155,8 @@ export function YouTubePlayer({
   const activeRef = useRef(0);
   const fadeRef = useRef<Fade>({ timer: undefined, finish: null });
   const nearEndItemRef = useRef<string | null>(null);
+  /** The room's own volume. Read from the player between fades, never from the middle of one. */
+  const baseVolumeRef = useRef(100);
   const latest = useRef({ playing, follow, resume, semitones, onPlayingChange, onEnded, onError });
   const [active, setActive] = useState(0);
   const [readyCount, setReadyCount] = useState(0);
@@ -243,7 +245,8 @@ export function YouTubePlayer({
     const remaining = outgoing.getDuration() - outgoing.getCurrentTime();
     const seconds = remaining <= crossfade + 2 ? crossfade : Math.min(SKIP_FADE_S, crossfade);
     const incoming = other.player;
-    const volume = Math.max(outgoing.getVolume(), 1);
+    // Taking it from the player here would pick up a half-faded value and leave every song quieter than the last.
+    const volume = Math.max(baseVolumeRef.current, 1);
     incoming.setVolume(0);
     incoming.loadVideoById(video);
     other.itemId = item.id;
@@ -252,10 +255,18 @@ export function YouTubePlayer({
     setFadeSeconds(seconds);
 
     const startedAt = performance.now();
+    // Setting the volume a player already believes it has does nothing, and after loading a video its belief and the
+    // sound can disagree — so nudge it to another value first.
+    const forceVolume = (player: Player, level: number) => {
+      player.setVolume(level === 0 ? 1 : Math.max(0, level - 1));
+      player.setVolume(level);
+    };
     fadeRef.current.finish = () => {
       outgoing.pauseVideo();
-      outgoing.setVolume(volume);
-      incoming.setVolume(volume);
+      forceVolume(outgoing, volume);
+      forceVolume(incoming, volume);
+      // A player also restores its own remembered volume shortly after a video starts, so insist for a moment.
+      [400, 1200, 2500].forEach((delay) => window.setTimeout(() => forceVolume(incoming, volume), delay));
     };
     fadeRef.current.timer = window.setInterval(() => {
       const progress = Math.min(1, (performance.now() - startedAt) / (seconds * 1000));
@@ -276,6 +287,17 @@ export function YouTubePlayer({
       if (isRunning(player)) player.pauseVideo();
     }
   }, [active, item.id, playing, readyCount]);
+
+  // Follow the volume the person actually chose, sampled only while no fade is moving it.
+  useEffect(() => {
+    if (!playing || readyCount === 0) return;
+    const intervalId = window.setInterval(() => {
+      if (fadeRef.current.timer !== undefined) return;
+      const volume = decksRef.current[activeRef.current].player?.getVolume();
+      if (typeof volume === "number" && Number.isFinite(volume) && volume > 0) baseVolumeRef.current = volume;
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [playing, readyCount]);
 
   // Browsers block autoplay with sound until the person interacts with the page; offer a button when that happens.
   useEffect(() => {

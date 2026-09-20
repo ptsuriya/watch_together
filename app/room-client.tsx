@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  createRoomState, hasContent, mayChangeKey, reduceRoom, sanitizeChat, sanitizeGuestIntent, sanitizeReaction, sanitizeState,
+  createRoomState, hasContent, isManager, MANAGER_INTENTS, mayChangeKey, reduceRoom, sanitizeChat, sanitizeGuestIntent,
+  sanitizeReaction, sanitizeState,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -82,6 +83,7 @@ export default function RoomClient({
   const stateRef = useRef(state);
   const isHostRef = useRef(false);
   const selfNameRef = useRef("");
+  const selfIdRef = useRef<string | null>(null);
   const broadcastRef = useRef<(event: RoomEvent) => void>(() => undefined);
   const timeRef = useRef<(() => number | null) | null>(null);
   const sessionRef = useRef("");
@@ -165,8 +167,10 @@ export default function RoomClient({
       pushToast("ยังเชื่อมต่อห้องไม่ได้ รอสักครู่แล้วลองอีกครั้ง");
       return;
     }
-    const guestIntent = sanitizeGuestIntent(intent.kind === "key" ? { ...intent, from: selfNameRef.current } : intent);
-    if (guestIntent) broadcastRef.current({ kind: "intent", intent: guestIntent });
+    const guestIntent = sanitizeGuestIntent(intent);
+    if (guestIntent) {
+      broadcastRef.current({ kind: "intent", intent: guestIntent, from: selfNameRef.current, fromId: selfIdRef.current ?? undefined });
+    }
   }, [commit, pushToast, realtimeConfigured]);
 
   const pushMessage = useCallback((text: string, from: string) => {
@@ -248,10 +252,16 @@ export default function RoomClient({
         if (!isHostRef.current) return;
         const intent = sanitizeGuestIntent(event.intent);
         if (!intent) return;
+        const state = stateRef.current;
+        const fromId = typeof event.fromId === "string" ? event.fromId : undefined;
+        const fromName = sanitizeChat(event.from).slice(0, 32);
+        const manager = isManager(state, fromId);
+        // Running the queue and the room's settings is for the host and the co-hosts they picked.
+        if (MANAGER_INTENTS.some((kind) => kind === intent.kind) && !manager) return;
         // Guests write the notes only while the host has shared them.
-        if (intent.kind === "notes" && !stateRef.current.notesShared) return;
+        if (intent.kind === "notes" && !state.notesShared && !manager) return;
         // The host decides who may change the key: only the host, only whoever queued the song, or anyone.
-        if (intent.kind === "key" && !mayChangeKey(stateRef.current, intent.from)) return;
+        if (intent.kind === "key" && !manager && !mayChangeKey(state, fromName)) return;
         commit(intent);
         return;
       }
@@ -356,7 +366,8 @@ export default function RoomClient({
     connectedRef.current = status === "connected";
     broadcastRef.current = broadcast;
     selfNameRef.current = selfName;
-  }, [broadcast, isHost, selfName, status]);
+    selfIdRef.current = selfId;
+  }, [broadcast, isHost, selfId, selfName, status]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -490,8 +501,9 @@ export default function RoomClient({
   }
 
   const inviteUrl = `${appOrigin}/?room=${roomCode}&mode=${state.mode}`;
+  const canManage = isHost || isManager(state, selfId) || !realtimeConfigured;
   const model: RoomModel = {
-    state, isHost, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
+    state, isHost, canManage, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
   };
   const tvScreen = isHost && state.mode !== "watch";
   const waiting = !isHost && realtimeConfigured && !synced;
