@@ -3,3 +3,6 @@ node_modules/
 out/
 .env*.local
 tsconfig.tsbuildinfo
+
+# The browser pane writes this when it starts the dev server; it points at one machine.
+.claude/launch.json
