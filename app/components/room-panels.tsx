@@ -3,7 +3,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import {
   AArrowDown, AArrowUp, Check, Copy, Crown, Maximize, Maximize2, Mic, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
-  MessageSquare, MessageSquareOff, UserRound, UsersRound,
+  MessageSquare, MessageSquareOff, NotebookPen, NotebookText, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
@@ -354,6 +354,21 @@ export function KeyControlSelect({ value, dispatch }: { value: KeyControlMode; d
         {KEY_CONTROL_OPTIONS.map((option) => <option key={option} value={option}>{KEY_CONTROL_LABELS[option]}</option>)}
       </select>
     </span>
+  );
+}
+
+export function NotesToggle({ enabled, dispatch }: { enabled: boolean; dispatch: (intent: RoomIntent) => void }) {
+  return (
+    <button
+      type="button"
+      className={`pill notes-toggle${enabled ? " is-on" : ""}`}
+      aria-pressed={enabled}
+      onClick={() => dispatch({ kind: "notesOn", enabled: !enabled })}
+      title={enabled ? "ซ่อนโน้ตและเนื้อเพลง" : "แสดงโน้ตและเนื้อเพลง"}
+    >
+      {enabled ? <NotebookText size={16} aria-hidden="true" /> : <NotebookPen size={16} aria-hidden="true" />}
+      โน้ต
+    </button>
   );
 }
 

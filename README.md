@@ -51,7 +51,7 @@ Messages fly across the screen the way comments do on Chinese streaming sites. O
 
 ## Notes and lyrics
 
-The host can paste lyrics into the notes, and everyone sees them live. **ให้เพื่อนในห้องช่วยเขียน** lets guests type in them too (last writer wins; incoming text is only adopted during a typing pause so the cursor does not jump). A− / A+ set the reading size, on the panel and in the full-screen view, and the size is remembered per device.
+The host can paste lyrics into the notes, and everyone sees them live. **โน้ต** next to the queue hides the panel for the whole room, and the video then takes the full width. **ให้เพื่อนในห้องช่วยเขียน** lets guests type in them too (last writer wins; incoming text is only adopted during a typing pause so the cursor does not jump). A− / A+ set the reading size, on the panel and in the full-screen view, and the size is remembered per device.
 
 ## Karaoke key changes
 

@@ -30,6 +30,8 @@ export type RoomState = {
   notes: string;
   /** Karaoke key offset in semitones. */
   key: number;
+  /** The notes panel is on screen at all. */
+  notesOn: boolean;
   /** Guests may edit the notes too, not only the host. */
   notesShared: boolean;
   /** Seconds the end of a song overlaps the start of the next one; 0 turns crossfading off. */
@@ -60,6 +62,7 @@ export type RoomIntent =
   | { kind: "notes"; text: string }
   | { kind: "mode"; mode: RoomMode }
   | { kind: "playback"; playing: boolean }
+  | { kind: "notesOn"; enabled: boolean }
   | { kind: "notesShared"; shared: boolean }
   | { kind: "crossfade"; seconds: number }
   | { kind: "chat"; enabled: boolean }
@@ -93,7 +96,7 @@ export function isVideoId(value: unknown): value is string {
 export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
-    notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
+    notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
   };
 }
 
@@ -158,6 +161,8 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     }
     case "mode":
       return intent.mode === state.mode ? state : { ...state, mode: intent.mode, key: 0 };
+    case "notesOn":
+      return intent.enabled === state.notesOn ? state : { ...state, notesOn: intent.enabled };
     case "notesShared":
       return intent.shared === state.notesShared ? state : { ...state, notesShared: intent.shared };
     case "crossfade": {
@@ -243,6 +248,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     position,
     notes: typeof value.notes === "string" ? value.notes.slice(0, MAX_NOTES) : "",
     key,
+    notesOn: value.notesOn !== false,
     notesShared: value.notesShared === true,
     crossfade: parseCrossfade(value.crossfade),
     keyHelper: value.keyHelper === true,

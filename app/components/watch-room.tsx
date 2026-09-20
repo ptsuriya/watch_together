@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { ChatBar, type ChatMessage } from "./chat";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
-import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel } from "./room-panels";
+import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel, NotesToggle } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art } from "./ui";
 
@@ -31,7 +31,7 @@ export function WatchRoom({
   const memberCount = members.length || 1;
 
   return (
-    <div className="watch-grid">
+    <div className={`watch-grid${state.notesOn ? "" : " no-notes"}`}>
       <section className="card player-card" aria-label="วิดีโอ">
         <div className="player-slot">
           {state.nowPlaying ? player : (
@@ -56,7 +56,9 @@ export function WatchRoom({
         </div>
       </section>
 
-      <NotesPanel notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onExpand={onExpandNotes} />
+      {state.notesOn && (
+        <NotesPanel notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onExpand={onExpandNotes} />
+      )}
 
       <section className="card members-card" aria-labelledby="members-title">
         <Art name="hello" className="card-bear" sizes="96px" />
@@ -75,6 +77,7 @@ export function WatchRoom({
           {isHost && (
             <div className="room-settings">
               <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
+              <NotesToggle enabled={state.notesOn} dispatch={dispatch} />
               <ChatToggle enabled={state.chat} dispatch={dispatch} />
             </div>
           )}
