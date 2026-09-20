@@ -13,6 +13,14 @@ the video through Web Audio into [Signalsmith Stretch](https://signalsmith-audio
   goes straight through, and nothing about the ad is blocked, skipped or changed.
 - No data is collected, stored or sent anywhere. The extension has no background page and no network calls.
 
+## What it does
+
+- **Key** — the room posts a key and the content script shifts the pitch of the embed's audio with Signalsmith Stretch.
+- **Vocal cut (1.2.0)** — the room can ask for half or all of the centre channel to be subtracted (L−R), the old karaoke
+  trick for thinning a guide vocal. It is mono by nature and takes the centred bass and kick with it, which is why the
+  room offers half as well as all. Songs that do not mix the voice dead centre barely change.
+- Neither touches a YouTube ad: while the player says an ad is on, the audio goes straight through.
+
 ## Install for testing
 
 `npm run extension:zip` in the project root packs `public/kuma-karaoke-key.zip`.

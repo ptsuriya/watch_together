@@ -110,6 +110,7 @@ export function YouTubePlayer({
   crossfade = 0,
   hasNext = false,
   semitones,
+  vocalCut = 0,
   follow,
   offset = 0,
   resume,
@@ -131,6 +132,8 @@ export function YouTubePlayer({
   hasNext?: boolean;
   /** Karaoke host: the key to ask the KUMA Karaoke Key extension for. */
   semitones?: number;
+  /** Karaoke: how much of the centre channel the extension should subtract, to thin the guide vocal. */
+  vocalCut?: number;
   /** Guests: keep the player within a second or two of the host. */
   follow?: PlaybackFollow;
   /** Guests: seconds this device plays ahead of the host, to cancel the delay of a screen someone is sharing. */
@@ -156,7 +159,7 @@ export function YouTubePlayer({
   const nearEndItemRef = useRef<string | null>(null);
   /** The room's own volume. Read from the player between fades, never from the middle of one. */
   const baseVolumeRef = useRef(100);
-  const latest = useRef({ playing, follow, offset, resume, semitones, onPlayingChange, onEnded, onError });
+  const latest = useRef({ playing, follow, offset, resume, semitones, vocalCut, onPlayingChange, onEnded, onError });
   /** The offset this player has already moved to, so a fresh one can move it at once. */
   const offsetRef = useRef(offset);
   const [active, setActive] = useState(0);
@@ -169,7 +172,7 @@ export function YouTubePlayer({
   const sendsKey = semitones !== undefined;
 
   useEffect(() => {
-    latest.current = { playing, follow, offset, resume, semitones, onPlayingChange, onEnded, onError };
+    latest.current = { playing, follow, offset, resume, semitones, vocalCut, onPlayingChange, onEnded, onError };
   });
 
   useEffect(() => {
@@ -350,11 +353,16 @@ export function YouTubePlayer({
     return () => window.clearInterval(intervalId);
   }, [crossfade, hasNext, item.id, onNearEnd, playing, twoDecks]);
 
-  // Karaoke host: tell the extension inside the playing deck which key to use.
+  // Karaoke: tell the extension inside the playing deck which key to use, and how much voice to take out.
   useEffect(() => {
     if (semitones === undefined) return;
     sendToHelper(decksRef.current[activeRef.current].player?.getIframe(), { type: "key", semitones });
   }, [active, item.id, readyCount, semitones]);
+
+  useEffect(() => {
+    if (semitones === undefined) return;
+    sendToHelper(decksRef.current[activeRef.current].player?.getIframe(), { type: "vocals", amount: vocalCut });
+  }, [active, item.id, readyCount, semitones, vocalCut]);
 
   // A freshly loaded embed announces itself; it needs the current key again.
   useEffect(() => {
@@ -364,6 +372,7 @@ export function YouTubePlayer({
       const frame = decksRef.current[activeRef.current].player?.getIframe();
       if (message?.type !== "ready" || !frame || event.source !== frame.contentWindow) return;
       sendToHelper(frame, { type: "key", semitones: latest.current.semitones ?? 0 });
+      sendToHelper(frame, { type: "vocals", amount: latest.current.vocalCut });
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);

@@ -655,6 +655,7 @@ export default function RoomClient({
       crossfade={state.crossfade}
       hasNext={state.queue.length > 0}
       semitones={isKaraoke(state.mode) && (isHost || state.mode === "singalong") ? state.key : undefined}
+      vocalCut={state.vocalCut}
       onNearEnd={isHost ? handleNearEnd : undefined}
       follow={isHost ? undefined : follow}
       offset={isHost ? 0 : syncOffset - state.hostOffset}

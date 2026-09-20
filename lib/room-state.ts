@@ -51,6 +51,8 @@ export type RoomState = {
   notes: string;
   /** Karaoke key offset in semitones. */
   key: number;
+  /** How much of the centre channel the room subtracts, to thin out the guide vocal: 0, 0.5 or 1. */
+  vocalCut: number;
   /** The notes panel is on screen at all. */
   notesOn: boolean;
   /** Guests may edit the notes too, not only the host. */
@@ -189,6 +191,7 @@ export type RoomIntent =
   | { kind: "crossfade"; seconds: number }
   | { kind: "chat"; enabled: boolean }
   | { kind: "keyControl"; value: KeyControl }
+  | { kind: "vocalCut"; amount: number }
   | { kind: "cohost"; memberId: string; enabled: boolean }
   | { kind: "queueLimit"; count: number }
   | { kind: "queueOrder"; value: QueueOrder }
@@ -210,7 +213,7 @@ export type RoomIntent =
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
-  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament",
+  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "vocalCut",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -218,7 +221,7 @@ export type GuestIntent = Extract<
   RoomIntent,
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
-    | "bomb" | "standingsReset" | "tournament" }
+    | "bomb" | "standingsReset" | "tournament" | "vocalCut" }
 >;
 
 export type RoomEvent =
@@ -235,6 +238,8 @@ export const MAX_QUEUE = 100;
 export const MAX_NOTES = 20_000;
 export const KEY_RANGE = 12;
 export const CROSSFADE_OPTIONS = [0, 3, 6, 10] as const;
+/** Off, half, and the whole centre channel. */
+export const VOCAL_CUT_OPTIONS = [0, 0.5, 1] as const;
 export const DEFAULT_CROSSFADE = 6;
 export const MAX_CHAT = 80;
 export const REACTIONS = ["👏", "🔥", "😍", "😂", "🎉", "🐻", "❤️", "🍯", "🎤", "💯"] as const;
@@ -248,7 +253,7 @@ export function isVideoId(value: unknown): value is string {
 export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
-    notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
+    vocalCut: 0, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
     cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
     standings: [], tournament: null, hostOffset: 0,
@@ -322,7 +327,7 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return notes === state.notes ? state : { ...state, notes };
     }
     case "mode":
-      return intent.mode === state.mode ? state : { ...state, mode: intent.mode, key: 0 };
+      return intent.mode === state.mode ? state : { ...state, mode: intent.mode, key: 0, vocalCut: 0 };
     case "notesOn":
       return intent.enabled === state.notesOn ? state : { ...state, notesOn: intent.enabled };
     case "notesShared":
@@ -335,6 +340,11 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return intent.enabled === state.chat ? state : { ...state, chat: intent.enabled };
     case "keyControl":
       return intent.value === state.keyControl ? state : { ...state, keyControl: intent.value };
+    case "vocalCut": {
+      if (!isKaraoke(state.mode)) return state;
+      const amount = VOCAL_CUT_OPTIONS.find((option) => option === intent.amount) ?? 0;
+      return amount === state.vocalCut ? state : { ...state, vocalCut: amount };
+    }
     case "cohost": {
       const has = state.cohosts.includes(intent.memberId);
       if (intent.enabled === has) return state;
@@ -559,6 +569,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     position,
     notes: typeof value.notes === "string" ? value.notes.slice(0, MAX_NOTES) : "",
     key,
+    vocalCut: VOCAL_CUT_OPTIONS.find((option) => option === value.vocalCut) ?? 0,
     notesOn: value.notesOn !== false,
     notesShared: value.notesShared === true,
     crossfade: parseCrossfade(value.crossfade),
@@ -709,6 +720,8 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
       return typeof value.enabled === "boolean" ? { kind: "scoring", enabled: value.enabled } : null;
     case "bombSeconds":
       return typeof value.seconds === "number" ? { kind: "bombSeconds", seconds: value.seconds } : null;
+    case "vocalCut":
+      return typeof value.amount === "number" ? { kind: "vocalCut", amount: value.amount } : null;
     case "vote": {
       // Who voted comes from the envelope the host trusts, never from the payload.
       const itemId = text(value.itemId, 64);

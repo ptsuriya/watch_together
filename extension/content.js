@@ -3,10 +3,14 @@
 //
 //   room -> embed: { source: "kuma-listening-party", type: "hello" }
 //   room -> embed: { source: "kuma-listening-party", type: "key", semitones: -12..12 }
+//   room -> embed: { source: "kuma-listening-party", type: "vocals", amount: 0..1 }   (centre-channel removal)
 //   room -> embed: { source: "kuma-listening-party", type: "probe" }   (measures the output level, for diagnostics)
 //   embed -> room: { source: "kuma-karaoke-key", type: "ready" | "status" | "error" | "probe", ... }
 //
-// The audio only goes through Web Audio once a key other than 0 is asked for; until then YouTube plays it untouched,
+// Vocal removal is the old karaoke trick: most singers are mixed dead centre, so L−R cancels them — along with
+// anything else in the middle, which is why the room can ask for half of it instead of all of it.
+//
+// The audio only goes through Web Audio once a key or a vocal cut is asked for; until then YouTube plays it untouched,
 // and YouTube's own ads always play untouched: the pitch shift steps aside while an ad is on screen.
 (() => {
   if (window === window.top) return;
@@ -18,12 +22,15 @@
   const RESUME_TIMEOUT_MS = 1500;
 
   let semitones = 0;
+  /** 0 keeps the mix as it is, 1 subtracts the whole centre channel, and anything between mixes the two. */
+  let vocalCut = 0;
   let context = null;
   let source = null;
   let sourceElement = null;
   let stretchRequest = null;
   let stretch = null;
   let meter = null;
+  let killer = null;
   let adPlaying = false;
   let adObserver = null;
 
@@ -50,6 +57,8 @@
       meter.fftSize = 8192;
     }
 
+    if (!killer) killer = buildKiller();
+
     if (sourceElement !== video) {
       source?.disconnect();
       source = context.createMediaElementSource(video);
@@ -71,6 +80,28 @@
     }
   }
 
+  /**
+   * L−R in Web Audio: the left channel plus an inverted right channel, mixed back against the untouched sound so the
+   * room can take half of it. The result is mono, which is what this trick costs.
+   */
+  function buildKiller() {
+    const splitter = context.createChannelSplitter(2);
+    const invert = context.createGain();
+    invert.gain.value = -1;
+    const side = context.createGain();
+    // L − R is quieter than the mix it came from on most songs; bring it back up a little.
+    side.gain.value = 1.4;
+    const dry = context.createGain();
+    const out = context.createGain();
+    // Wired once and left alone; only what goes in and what comes out changes.
+    splitter.connect(side, 0);
+    splitter.connect(invert, 1);
+    invert.connect(side);
+    side.connect(out);
+    dry.connect(out);
+    return { splitter, dry, side, out };
+  }
+
   /** YouTube marks its player while an ad plays; the ad must reach the speakers exactly as YouTube sent it. */
   function watchAds() {
     if (adObserver) return;
@@ -80,7 +111,7 @@
       const showing = player.classList.contains("ad-showing") || player.classList.contains("ad-interrupting");
       if (showing === adPlaying) return;
       adPlaying = showing;
-      if (source && stretch) route();
+      if (source && killer) route();
     };
     adObserver = new MutationObserver(update);
     adObserver.observe(player, { attributes: true, attributeFilter: ["class"] });
@@ -89,16 +120,27 @@
 
   function route() {
     source.disconnect();
-    stretch.disconnect();
-    // Straight through while the song is in its original key or an ad is playing: no processing, no delay.
+    stretch?.disconnect();
+    killer.out.disconnect();
+
+    // Straight through while the song is in its original key with every voice in it, or while an ad is playing.
     const shifted = semitones !== 0 && !adPlaying;
-    const output = shifted ? stretch : source;
+    const cutting = vocalCut > 0 && !adPlaying;
+    let node = source;
+    if (cutting) {
+      killer.dry.gain.value = 1 - vocalCut;
+      killer.side.gain.value = 1.4 * vocalCut;
+      source.connect(killer.splitter);
+      source.connect(killer.dry);
+      node = killer.out;
+    }
     if (shifted) {
       stretch.schedule({ active: true, semitones });
-      source.connect(stretch);
+      node.connect(stretch);
+      node = stretch;
     }
-    output.connect(context.destination);
-    output.connect(meter);
+    node.connect(context.destination);
+    node.connect(meter);
   }
 
   async function probe() {
@@ -118,11 +160,10 @@
     post("probe", { rms, peakHz, semitones, contextState: context.state });
   }
 
-  async function setKey(value) {
-    // Keys move in half semitones; the pitch shifter takes fractions happily.
-    semitones = Math.max(-KEY_RANGE, Math.min(KEY_RANGE, Math.round(value * 2) / 2));
-    if (semitones === 0 && !source) {
-      post("status", { semitones, processing: false });
+  async function apply() {
+    // Nothing is asked of the audio yet and it has never been routed: leave YouTube's own path alone.
+    if (semitones === 0 && vocalCut === 0 && !source) {
+      post("status", { semitones, vocalCut, processing: false });
       return;
     }
     try {
@@ -130,10 +171,25 @@
       route();
       const shifted = semitones !== 0 && !adPlaying;
       const latency = shifted ? await stretch.latency() : 0;
-      post("status", { semitones, processing: shifted, adPlaying, latencyMs: Math.round(latency * 1000) });
+      post("status", {
+        semitones, vocalCut, adPlaying,
+        processing: shifted || (vocalCut > 0 && !adPlaying),
+        latencyMs: Math.round(latency * 1000),
+      });
     } catch (error) {
-      post("error", { semitones, message: error instanceof Error ? error.message : String(error) });
+      post("error", { semitones, vocalCut, message: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  function setKey(value) {
+    // Keys move in half semitones; the pitch shifter takes fractions happily.
+    semitones = Math.max(-KEY_RANGE, Math.min(KEY_RANGE, Math.round(value * 2) / 2));
+    return apply();
+  }
+
+  function setVocals(value) {
+    vocalCut = Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+    return apply();
   }
 
   window.addEventListener("message", (event) => {
@@ -142,6 +198,7 @@
     if (!data || typeof data !== "object" || data.source !== ROOM) return;
     if (data.type === "hello") post("ready");
     else if (data.type === "key" && Number.isFinite(data.semitones)) void setKey(data.semitones);
+    else if (data.type === "vocals" && Number.isFinite(data.amount)) void setVocals(data.amount);
     else if (data.type === "probe") void probe();
   });
 

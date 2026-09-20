@@ -1,4 +1,8 @@
 {
-  "name": { "message": "KUMA Karaoke Key" },
-  "description": { "message": "เปลี่ยนคีย์เพลงคาราโอเกะบนจอกลางจากมือถือ ใช้คู่กับห้อง KUMA Listening Party" }
+  "name": {
+    "message": "KUMA Karaoke Key"
+  },
+  "description": {
+    "message": "เปลี่ยนคีย์และลดเสียงร้องต้นฉบับของเพลงคาราโอเกะจากมือถือ ใช้คู่กับห้อง KUMA Listening Party"
+  }
 }

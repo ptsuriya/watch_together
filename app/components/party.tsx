@@ -1,9 +1,11 @@
 "use client";
 
-import { Bomb, Crown, Dices, ListOrdered, Medal, SlidersHorizontal, Star, Swords, ThumbsUp, Timer, Trash2, Trophy } from "lucide-react";
+import {
+  Bomb, Crown, Dices, ListOrdered, Medal, MicOff, SlidersHorizontal, Star, Swords, ThumbsUp, Timer, Trash2, Trophy,
+} from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
-  BOMB_SECOND_OPTIONS, isKaraoke, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, scoreAverage, SCORE_MAX, standingsBoard,
+  BOMB_SECOND_OPTIONS, isKaraoke, VOCAL_CUT_OPTIONS, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, scoreAverage, SCORE_MAX, standingsBoard,
   waitingOn,
   type PartyGame, type QueueItem, type QueueOrder, type RoomIntent, type RoomState, type Spotlight,
 } from "../../lib/room-state";
@@ -23,6 +25,12 @@ const GAME_LABELS: Record<PartyGame, { name: string; hint: string }> = {
   blind: { name: "ร้องเพลงมั่ว", hint: "เพลงที่เพิ่มเข้ามาจะถูกสุ่มให้คนอื่นร้อง เจ้าตัวไม่ได้เลือกเอง" },
 };
 
+const VOCAL_CUT_LABELS: Record<number, string> = {
+  0: "ปิด — เสียงเดิม",
+  0.5: "ลดครึ่ง — ยังได้ยินต้นฉบับบางๆ",
+  1: "ตัดเต็ม — เงียบสุดเท่าที่ทำได้",
+};
+
 function timeLeft(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -34,6 +42,7 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
   const orderId = useId();
   const gameId = useId();
   const bombId = useId();
+  const vocalId = useId();
 
   if (!canManage) {
     return (
@@ -162,6 +171,25 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
             {state.mode === "watch" && <NotesToggle enabled={state.notesOn} dispatch={dispatch} />}
           </div>
           {isKaraoke(state.mode) && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
+          {isKaraoke(state.mode) && (
+            <>
+              <label htmlFor={vocalId} className="party-sub"><MicOff size={16} aria-hidden="true" /> ลดเสียงร้องต้นฉบับ (ทดลอง)</label>
+              <select
+                id={vocalId}
+                className="field"
+                value={state.vocalCut}
+                onChange={(event) => dispatch({ kind: "vocalCut", amount: Number(event.target.value) })}
+              >
+                {VOCAL_CUT_OPTIONS.map((amount) => (
+                  <option key={amount} value={amount}>{VOCAL_CUT_LABELS[amount]}</option>
+                ))}
+              </select>
+              <small>
+                ใช้วิธีหักล้างเสียงที่อยู่กลางมิกซ์ ได้ผลไม่เท่ากันทุกเพลง — เบสกับกลองมักบางลงด้วย เสียงกลายเป็นโมโน
+                และเพลงที่ร้องไม่ได้อยู่กลางจะแทบไม่เปลี่ยน ต้องติดตั้งส่วนเสริมเวอร์ชัน 1.2 ขึ้นไป
+              </small>
+            </>
+          )}
         </div>
       </div>
       <Art name="party" className="dialog-bear" sizes="96px" />
