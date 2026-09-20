@@ -418,8 +418,12 @@ export default function RoomClient({
   const hostOnline = members.some((member) => member.isHost);
 
   // A karaoke host meets the setup the moment the room opens, instead of wondering why the key does nothing.
+  // In a sing-along every screen shifts its own sound, so anyone on a computer that could install it hears about it too.
   useEffect(() => {
-    if (!isHost || state.mode !== "karaoke" || karaokeSetupShownRef.current || keyHelperStatus === "ready") return;
+    const wanted = state.mode === "singalong"
+      ? keyHelperStatus === "missing"
+      : isHost && state.mode === "karaoke" && keyHelperStatus !== "ready";
+    if (!wanted || karaokeSetupShownRef.current) return;
     // Marked inside the timeout: a run that React cancels (StrictMode) must not count as shown.
     const timeoutId = window.setTimeout(() => {
       karaokeSetupShownRef.current = true;
@@ -696,7 +700,13 @@ export default function RoomClient({
       {!tvScreen && <ToastStack toasts={toasts} placement={isHost ? "corner" : "bottom"} />}
       {dialog === "invite" && <InviteDialog model={model} onClose={() => setDialog(null)} />}
       {dialog === "name" && <NameDialog name={listenerName} onSave={saveName} onClose={() => setDialog(null)} />}
-      {dialog === "karaoke" && <KaraokeSetupDialog status={keyHelperStatus} onClose={() => setDialog(null)} />}
+      {dialog === "karaoke" && (
+        <KaraokeSetupDialog
+          status={keyHelperStatus}
+          place={state.mode === "singalong" ? "device" : "stage"}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog === "party" && <PartyDialog model={model} onClose={() => setDialog(null)} />}
       {dialog === "notes" && (
         <NotesDialog notes={state.notes} canManage={canManage} shared={state.notesShared} dispatch={dispatch} onClose={() => setDialog(null)} />

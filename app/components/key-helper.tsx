@@ -13,17 +13,34 @@ export function KeyHelperProbe({ active }: { active: boolean }) {
   return <iframe src={HELPER_PROBE_URL} title="ตรวจส่วนเสริมเปลี่ยนคีย์" className="key-probe" tabIndex={-1} aria-hidden="true" />;
 }
 
-const STATUS_LINE: Record<HelperStatus, { text: string; tone: string }> = {
-  ready: { text: "พร้อมเปลี่ยนคีย์จากมือถือแล้ว", tone: "is-ok" },
+/** The shared screen speaks for the room; a sing-along screen speaks only for the person in front of it. */
+export type HelperPlace = "stage" | "device";
+
+const STATUS_LINE: Record<HelperStatus, { text: string; device?: string; tone: string }> = {
+  ready: { text: "พร้อมเปลี่ยนคีย์จากมือถือแล้ว", device: "เครื่องนี้เปลี่ยนคีย์เสียงได้แล้ว", tone: "is-ok" },
   checking: { text: "กำลังตรวจส่วนเสริมเปลี่ยนคีย์…", tone: "" },
   blocked: { text: "คลิกที่หน้านี้หนึ่งครั้งเพื่อปลดล็อกเสียง", tone: "is-error" },
-  missing: { text: "ยังไม่ได้ติดตั้งส่วนเสริม เสียงจะยังไม่เปลี่ยนคีย์", tone: "is-error" },
-  unsupported: { text: "จอนี้เปลี่ยนคีย์ไม่ได้ ต้องใช้ Chrome หรือ Edge บนคอมพิวเตอร์", tone: "is-error" },
+  missing: {
+    text: "ยังไม่ได้ติดตั้งส่วนเสริม เสียงจะยังไม่เปลี่ยนคีย์",
+    device: "เครื่องนี้ยังไม่ได้ติดตั้งส่วนเสริม จะได้ยินคีย์ต้นฉบับ",
+    tone: "is-error",
+  },
+  unsupported: {
+    text: "จอนี้เปลี่ยนคีย์ไม่ได้ ต้องใช้ Chrome หรือ Edge บนคอมพิวเตอร์",
+    device: "เครื่องนี้ติดตั้งส่วนเสริมไม่ได้ จะได้ยินคีย์ต้นฉบับ (ใช้ Chrome หรือ Edge บนคอมถึงจะเปลี่ยนได้)",
+    tone: "is-error",
+  },
 };
 
-/** One line in the karaoke sidebar, with a way back into the setup steps. */
-export function KeyHelperStatusLine({ status, onOpenSetup }: { status: HelperStatus; onOpenSetup: () => void }) {
-  const { text, tone } = STATUS_LINE[status];
+/** One line under the key buttons, with a way back into the setup steps. */
+export function KeyHelperStatusLine({ status, onOpenSetup, place = "stage" }: {
+  status: HelperStatus;
+  onOpenSetup: () => void;
+  place?: HelperPlace;
+}) {
+  const line = STATUS_LINE[status];
+  const tone = line.tone;
+  const text = place === "device" ? line.device ?? line.text : line.text;
   return (
     <p className={`helper-note ${tone}`}>
       {status === "ready" ? <Check size={16} aria-hidden="true" /> : status === "checking" ? <span className="spinner" aria-hidden="true" /> : <TriangleAlert size={16} aria-hidden="true" />}
@@ -36,7 +53,11 @@ export function KeyHelperStatusLine({ status, onOpenSetup }: { status: HelperSta
 }
 
 /** Opens by itself the moment a host starts a karaoke room, so nobody wonders why the key does nothing. */
-export function KaraokeSetupDialog({ status, onClose }: { status: HelperStatus; onClose: () => void }) {
+export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
+  status: HelperStatus;
+  onClose: () => void;
+  place?: HelperPlace;
+}) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -66,7 +87,11 @@ export function KaraokeSetupDialog({ status, onClose }: { status: HelperStatus; 
       )}
 
       {status === "ready" && (
-        <p className="dialog-text">เครื่องนี้ปรับคีย์ได้แล้ว ให้เพื่อนสแกน QR แล้วกดเพิ่ม-ลดคีย์จากมือถือได้เลย</p>
+        <p className="dialog-text">
+          {place === "device"
+            ? "เครื่องนี้ปรับคีย์ได้แล้ว คีย์ที่ใครในห้องกด จะเปลี่ยนเสียงในจอของคุณด้วย"
+            : "เครื่องนี้ปรับคีย์ได้แล้ว ให้เพื่อนสแกน QR แล้วกดเพิ่ม-ลดคีย์จากมือถือได้เลย"}
+        </p>
       )}
 
       {status === "blocked" && (
@@ -79,15 +104,20 @@ export function KaraokeSetupDialog({ status, onClose }: { status: HelperStatus; 
             หน้าจอนี้เปลี่ยนคีย์ไม่ได้ เพราะทีวี มือถือ และแท็บเล็ตติดตั้งส่วนเสริมไม่ได้
             ห้องยังใช้ได้ครบทุกอย่าง ทั้งคิวเพลง QR และอีโมจิ เพียงแต่ปุ่มคีย์จะเปลี่ยนแค่ตัวเลขบนจอ
           </p>
-          <p className="dialog-text">ถ้าอยากให้เสียงเปลี่ยนคีย์จริง ให้เปิดห้องนี้บนคอมพิวเตอร์ที่ต่อกับทีวี แล้วใช้ Chrome หรือ Edge</p>
+          <p className="dialog-text">
+            {place === "device"
+              ? "ถ้าอยากได้ยินคีย์ใหม่ด้วย ให้เปิดห้องนี้บนคอมพิวเตอร์ด้วย Chrome หรือ Edge แล้วติดตั้งส่วนเสริม คนอื่นในห้องที่ติดตั้งแล้วจะได้ยินคีย์ที่เปลี่ยนตามปกติ"
+              : "ถ้าอยากให้เสียงเปลี่ยนคีย์จริง ให้เปิดห้องนี้บนคอมพิวเตอร์ที่ต่อกับทีวี แล้วใช้ Chrome หรือ Edge"}
+          </p>
         </>
       )}
 
       {status === "missing" && (
         <>
           <p className="dialog-text">
-            เสียงเพลงอยู่ในตัวเล่นของ YouTube เว็บแตะไม่ได้โดยตรง ติดตั้งส่วนเสริมของเราครั้งเดียวบนเครื่องนี้
-            แล้วปุ่มคีย์บนมือถือทุกเครื่องจะเปลี่ยนเสียงเพลงได้ทันที
+            {place === "device"
+              ? "เสียงเพลงอยู่ในตัวเล่นของ YouTube เว็บแตะไม่ได้โดยตรง ติดตั้งส่วนเสริมครั้งเดียวบนเครื่องนี้ แล้วคีย์ที่ห้องตั้งไว้จะเปลี่ยนเสียงในจอของคุณทันที (แต่ละคนติดตั้งของตัวเอง)"
+              : "เสียงเพลงอยู่ในตัวเล่นของ YouTube เว็บแตะไม่ได้โดยตรง ติดตั้งส่วนเสริมของเราครั้งเดียวบนเครื่องนี้ แล้วปุ่มคีย์บนมือถือทุกเครื่องจะเปลี่ยนเสียงเพลงได้ทันที"}
           </p>
           {HELPER_STORE_URL ? (
             <a className="btn btn-honey btn-block" href={HELPER_STORE_URL} target="_blank" rel="noopener noreferrer">

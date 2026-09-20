@@ -83,7 +83,7 @@ export function WatchRoom({
                 {state.keyControl === "owner" ? "โฮสต์ให้เฉพาะคนที่ขอเพลงนี้ปรับคีย์ได้" : "โฮสต์ปรับคีย์เอง"}
               </p>
             )}
-            <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
+            <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} place="device" />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </div>
         )}
