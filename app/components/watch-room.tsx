@@ -2,7 +2,7 @@
 
 import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
-import { ChatBar, ChatFlights, type ChatMessage } from "./chat";
+import { ChatBar, type ChatMessage } from "./chat";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { ChatToggle, CrossfadeSelect, MemberList, NotesPanel } from "./room-panels";
@@ -52,9 +52,8 @@ export function WatchRoom({
           </div>
           <PlaybackButtons state={state} dispatch={dispatch} />
         </div>
-        {/* Messages and emoji live under the video here, never on top of it: every screen in this mode is small. */}
+        {/* Emoji rise under the video here: in this mode every screen is somebody's small window. */}
         <div className="room-ticker">
-          {state.chat && <ChatFlights messages={messages} />}
           <EmojiRain bursts={bursts} variant="strip" />
         </div>
         <div className="watch-social">

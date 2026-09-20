@@ -657,6 +657,8 @@ select.field { padding-right: 8px; }
 }
 /* container-type lets a message travel exactly the width of the screen it flies across, whatever that screen is. */
 .chat-flights { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; container-type: inline-size; }
+/* Watch mode: messages cross the whole window, at heights that miss the player. */
+.chat-flights-page { position: fixed; z-index: 35; }
 .chat-flight {
   position: absolute; left: 100%; white-space: nowrap;
   padding: 6px 16px; border: 2px solid var(--bark); border-radius: 999px;
@@ -675,8 +677,6 @@ select.field { padding-right: 8px; }
   border-top: 2px solid rgba(42, 16, 16, 0.12); background: var(--cream);
   container-type: inline-size;
 }
-.room-ticker .chat-flight { font-size: 16px; padding: 4px 12px; }
-.room-ticker .chat-flight { top: 14px !important; }
 .watch-social { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 18px 16px; }
 .watch-social .emoji-pad { flex: 1 1 240px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .side-emoji { padding: 12px; }

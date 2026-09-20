@@ -11,7 +11,7 @@ import {
 import { isSupabaseConfigured } from "../lib/supabase";
 import { lookupVideo, parseYouTubeId } from "../lib/youtube";
 import { HomeScreen } from "./components/home-screen";
-import { CHAT_FLIGHT_MS, CHAT_LANES, CHAT_LOG_SIZE, type ChatMessage } from "./components/chat";
+import { ChatFlights, CHAT_FLIGHT_MS, CHAT_LANES, CHAT_LOG_SIZE, type ChatMessage, pickFlightTop } from "./components/chat";
 import { KaraokeSetupDialog } from "./components/key-helper";
 import { BURST_LIFETIME_MS, type EmojiBurst, makeBurst } from "./components/reactions";
 import { RemoteRoom, WaitingRoom } from "./components/remote-room";
@@ -166,7 +166,10 @@ export default function RoomClient({
 
   const pushMessage = useCallback((text: string, from: string) => {
     messageIdRef.current += 1;
-    const message: ChatMessage = { id: messageIdRef.current, text, from, at: Date.now(), lane: messageIdRef.current % CHAT_LANES };
+    // Watch mode flies messages across the whole page, so each one picks a height that misses the player.
+    const acrossPage = stateRef.current.mode === "watch";
+    const top = acrossPage ? pickFlightTop(document.querySelector(".player-card")?.getBoundingClientRect() ?? null) : undefined;
+    const message: ChatMessage = { id: messageIdRef.current, text, from, at: Date.now(), lane: messageIdRef.current % CHAT_LANES, top };
     setMessages((current) => [...current.slice(-(CHAT_LOG_SIZE - 1)), message]);
     // Kept a little longer than the flight so the phone's list does not empty while a message is still on screen.
     window.setTimeout(() => setMessages((current) => current.filter((item) => item.id !== message.id)), CHAT_FLIGHT_MS * 2);
@@ -560,6 +563,7 @@ export default function RoomClient({
         onModeChange={changeMode}
         onFullscreen={tvScreen ? toggleFullscreen : undefined}
       />
+      {state.chat && state.mode === "watch" && <ChatFlights messages={messages} variant="page" />}
       {hostAway && <p className="banner banner-top" role="status">โฮสต์ออกจากห้องไปแล้ว รอโฮสต์กลับมา คิวยังอยู่ครบ</p>}
       <main className="room-main">{view}</main>
       {!tvScreen && <ToastStack toasts={toasts} placement={isHost ? "corner" : "bottom"} />}
