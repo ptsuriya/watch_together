@@ -432,7 +432,8 @@ export default function RoomClient({
   });
 
   // Everyone's own screen shifts its own key in a sing-along, so every device checks for the extension.
-  const keyHelperStatus = useKeyHelperStatus(state.mode === "singalong" || (isHost && state.mode === "karaoke"));
+  const helper = useKeyHelperStatus(state.mode === "singalong" || (isHost && state.mode === "karaoke"));
+  const keyHelperStatus = helper.status;
   const { offset: syncOffset, change: changeSyncOffset } = useSyncOffset();
   const selfName = listenerName || (isHost ? "โฮสต์" : selfId ? `ผู้ฟัง ${selfId.slice(0, 4).toUpperCase()}` : "ผู้ฟัง");
   const hostOnline = members.some((member) => member.isHost);
@@ -441,7 +442,7 @@ export default function RoomClient({
   // In a sing-along every screen shifts its own sound, so anyone on a computer that could install it hears about it too.
   useEffect(() => {
     const wanted = state.mode === "singalong"
-      ? keyHelperStatus === "missing"
+      ? keyHelperStatus === "missing" || keyHelperStatus === "outdated"
       : isHost && state.mode === "karaoke" && keyHelperStatus !== "ready";
     if (!wanted || karaokeSetupShownRef.current) return;
     // Marked inside the timeout: a run that React cancels (StrictMode) must not count as shown.
@@ -735,6 +736,7 @@ export default function RoomClient({
       {dialog === "karaoke" && (
         <KaraokeSetupDialog
           status={keyHelperStatus}
+          version={helper.version}
           place={state.mode === "singalong" ? "device" : "stage"}
           onClose={() => setDialog(null)}
         />

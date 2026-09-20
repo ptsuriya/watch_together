@@ -41,7 +41,25 @@ export function sendToHelper(
   frame?.contentWindow?.postMessage({ source: ROOM_SOURCE, ...message }, EMBED_ORIGIN);
 }
 
-export type HelperStatus = "checking" | "ready" | "missing" | "unsupported" | "blocked";
+export type HelperStatus = "checking" | "ready" | "missing" | "unsupported" | "blocked" | "outdated";
+
+/**
+ * The version the room needs. An extension loaded from a folder never updates itself — only a store can do that —
+ * so the room watches the version it hears and asks the person to load the new zip over it.
+ */
+export const HELPER_MIN_VERSION = "1.2.0";
+
+function olderThan(version: string, want: string) {
+  const left = version.split(".").map(Number);
+  const right = want.split(".").map(Number);
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const a = left[i] ?? 0;
+    const b = right[i] ?? 0;
+    if (!Number.isFinite(a)) return true;
+    if (a !== b) return a < b;
+  }
+  return false;
+}
 
 /** Which browser this is, as far as the install steps care. "other" cannot load the extension at all. */
 export type HelperBrowser = "chrome" | "edge" | "opera" | "firefox" | "other";
@@ -68,12 +86,14 @@ export function useKeyHelperStatus(enabled: boolean) {
   const [answered, setAnswered] = useState<"ready" | "blocked" | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const [supported, setSupported] = useState(true);
+  const [version, setVersion] = useState("");
 
   useEffect(() => {
     if (!enabled) return;
     const handleMessage = (event: MessageEvent) => {
       const message = readHelperMessage(event);
       if (!message) return;
+      if (typeof message.version === "string") setVersion(message.version);
       if (message.type === "error" && message.message === "audio-blocked") setAnswered("blocked");
       else setAnswered("ready");
     };
@@ -88,8 +108,9 @@ export function useKeyHelperStatus(enabled: boolean) {
   }, [enabled]);
 
   let status: HelperStatus;
-  if (answered) status = answered;
+  if (answered === "ready" && version && olderThan(version, HELPER_MIN_VERSION)) status = "outdated";
+  else if (answered) status = answered;
   else if (!supported) status = "unsupported";
   else status = timedOut ? "missing" : "checking";
-  return status;
+  return { status, version };
 }

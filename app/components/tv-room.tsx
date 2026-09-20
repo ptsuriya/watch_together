@@ -9,7 +9,7 @@ import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentPanel } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
-import { KeyControl, RoomQr } from "./room-panels";
+import { KeyControl, RoomQr, VocalCutSelect } from "./room-panels";
 import type { RoomModel, Toast } from "./room-model";
 import { Art, ToastStack } from "./ui";
 
@@ -178,6 +178,7 @@ export function TvRoom({
         {karaoke && (
           <section className="card side-key" aria-label="คีย์">
             <KeyControl value={state.key} dispatch={dispatch} />
+            <VocalCutSelect value={state.vocalCut} canManage={canManage} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </section>

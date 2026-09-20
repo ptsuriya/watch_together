@@ -53,6 +53,11 @@ const STATUS_LINE: Record<HelperStatus, { text: string; device?: string; tone: s
     device: "เครื่องนี้ยังไม่ได้ติดตั้งส่วนเสริม จะได้ยินคีย์ต้นฉบับ",
     tone: "is-error",
   },
+  outdated: {
+    text: "ส่วนเสริมเป็นรุ่นเก่า โหลดรุ่นใหม่ทับเพื่อใช้ลดเสียงร้อง",
+    device: "ส่วนเสริมบนเครื่องนี้เป็นรุ่นเก่า โหลดรุ่นใหม่ทับเพื่อใช้ลดเสียงร้อง",
+    tone: "is-warn",
+  },
   unsupported: {
     text: "จอนี้เปลี่ยนคีย์ไม่ได้ ต้องใช้ Chrome, Edge, Opera หรือ Firefox บนคอมพิวเตอร์",
     device: "เครื่องนี้ติดตั้งส่วนเสริมไม่ได้ จะได้ยินคีย์ต้นฉบับ (ใช้ Chrome, Edge, Opera หรือ Firefox บนคอมถึงจะเปลี่ยนได้)",
@@ -81,10 +86,12 @@ export function KeyHelperStatusLine({ status, onOpenSetup, place = "stage" }: {
 }
 
 /** Opens by itself the moment a host starts a karaoke room, so nobody wonders why the key does nothing. */
-export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
+export function KaraokeSetupDialog({ status, onClose, place = "stage", version = "" }: {
   status: HelperStatus;
   onClose: () => void;
   place?: HelperPlace;
+  /** What the extension on this screen answers with, so an old one can be named. */
+  version?: string;
 }) {
   const [copied, setCopied] = useState(false);
   // Read after hydration: the server cannot know which browser is asking.
@@ -110,7 +117,7 @@ export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
     <Dialog labelledBy="karaoke-setup-title" onClose={onClose}>
       <Art name="karaokeKey" className="dialog-bear dialog-bear-mark" sizes="128px" />
       <h2 id="karaoke-setup-title" className="dialog-title">
-        {status === "ready" ? "พร้อมร้องแล้ว!" : "อีกขั้นเดียว ให้ปุ่มคีย์เปลี่ยนเสียงจริง"}
+        {status === "ready" ? "พร้อมร้องแล้ว!" : status === "outdated" ? "มีส่วนเสริมรุ่นใหม่" : "อีกขั้นเดียว ให้ปุ่มคีย์เปลี่ยนเสียงจริง"}
       </h2>
 
       {status === "checking" && (
@@ -143,13 +150,21 @@ export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
         </>
       )}
 
-      {status === "missing" && (
+      {status === "outdated" && (
+        <p className="dialog-text">
+          เครื่องนี้ใช้ส่วนเสริมรุ่น {version || "เก่า"} อยู่ ส่วนเสริมที่ติดตั้งแบบโหลดโฟลเดอร์จะไม่อัปเดตเองเลย
+          (มีแต่ของที่มาจากสโตร์เท่านั้นที่อัปเดตอัตโนมัติ) ให้โหลดไฟล์ใหม่ทับโฟลเดอร์เดิม แล้วกดปุ่มรีโหลด
+          ที่การ์ดของส่วนเสริมในหน้า {setup.page} — คีย์ยังใช้ได้ตามปกติระหว่างนี้ แต่จะยังลดเสียงร้องไม่ได้
+        </p>
+      )}
+
+      {(status === "missing" || status === "outdated") && (
         <>
-          <p className="dialog-text">
+          {status === "missing" && <p className="dialog-text">
             {place === "device"
               ? "เสียงเพลงอยู่ในตัวเล่นของ YouTube เว็บแตะไม่ได้โดยตรง ติดตั้งส่วนเสริมครั้งเดียวบนเครื่องนี้ แล้วคีย์ที่ห้องตั้งไว้จะเปลี่ยนเสียงในจอของคุณทันที (แต่ละคนติดตั้งของตัวเอง)"
               : "เสียงเพลงอยู่ในตัวเล่นของ YouTube เว็บแตะไม่ได้โดยตรง ติดตั้งส่วนเสริมของเราครั้งเดียวบนเครื่องนี้ แล้วปุ่มคีย์บนมือถือทุกเครื่องจะเปลี่ยนเสียงเพลงได้ทันที"}
-          </p>
+          </p>}
           {HELPER_STORE_URL ? (
             <a className="btn btn-honey btn-block" href={HELPER_STORE_URL} target="_blank" rel="noopener noreferrer">
               <Download size={18} aria-hidden="true" /> ติดตั้งส่วนเสริม (คลิกเดียว)
@@ -157,7 +172,7 @@ export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
           ) : (
             <>
               <a className="btn btn-honey btn-block" href={HELPER_ZIP_URL} download>
-                <Download size={18} aria-hidden="true" /> ดาวน์โหลดส่วนเสริม (.zip)
+                <Download size={18} aria-hidden="true" /> {status === "outdated" ? "ดาวน์โหลดรุ่นใหม่ (.zip)" : "ดาวน์โหลดส่วนเสริม (.zip)"}
               </a>
               <ol className="helper-steps">
                 {browser !== "firefox" && <li>ดับเบิลคลิกไฟล์ที่โหลดมา ให้แตกเป็นโฟลเดอร์ kuma-karaoke-key</li>}
@@ -174,7 +189,7 @@ export function KaraokeSetupDialog({ status, onClose, place = "stage" }: {
             </>
           )}
           <button type="button" className="btn btn-secondary btn-block" onClick={() => window.location.reload()}>
-            <RefreshCw size={16} aria-hidden="true" /> ติดตั้งแล้ว รีเฟรชหน้า
+            <RefreshCw size={16} aria-hidden="true" /> {status === "outdated" ? "อัปเดตแล้ว รีเฟรชหน้า" : "ติดตั้งแล้ว รีเฟรชหน้า"}
           </button>
         </>
       )}

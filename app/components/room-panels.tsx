@@ -2,13 +2,14 @@
 
 import { QRCodeSVG } from "qrcode.react";
 import {
-  AArrowDown, AArrowUp, Check, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, MicVocal, Minus, MonitorPlay, Plus, QrCode, RotateCcw, Tv,
+  AArrowDown, AArrowUp, Check, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, MicOff, MicVocal, Minus, MonitorPlay,
+  Plus, QrCode, RotateCcw, Tv,
   MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
 import {
-  CROSSFADE_OPTIONS, formatKey, KEY_CONTROL_OPTIONS, KEY_RANGE, KEY_UNIT, MAX_NOTES,
+  CROSSFADE_OPTIONS, formatKey, KEY_CONTROL_OPTIONS, KEY_RANGE, KEY_UNIT, MAX_NOTES, VOCAL_CUT_OPTIONS,
   type KeyControl as KeyControlMode, type KeyStep, type RoomIntent, type RoomMode,
 } from "../../lib/room-state";
 import { canCrossfade } from "../../lib/youtube";
@@ -373,6 +374,33 @@ export function KeyControlSelect({ value, dispatch }: { value: KeyControlMode; d
       <label htmlFor={selectId}>ใครปรับคีย์ได้</label>
       <select id={selectId} className="field" value={value} onChange={(event) => dispatch({ kind: "keyControl", value: event.target.value as KeyControlMode })}>
         {KEY_CONTROL_OPTIONS.map((option) => <option key={option} value={option}>{KEY_CONTROL_LABELS[option]}</option>)}
+      </select>
+    </span>
+  );
+}
+
+const VOCAL_CUT_LABELS: Record<number, string> = { 0: "ปกติ", 0.5: "ลดครึ่ง", 1: "ตัดออก" };
+
+/** Karaoke: how much of the original singer the room wants left. It sits with the key, where it is used. */
+export function VocalCutSelect({ value, canManage, dispatch }: {
+  value: number;
+  canManage: boolean;
+  dispatch: (intent: RoomIntent) => void;
+}) {
+  const selectId = useId();
+  if (!canManage) {
+    return value > 0 ? <p className="hint">ห้องนี้ {VOCAL_CUT_LABELS[value]}เสียงร้องต้นฉบับอยู่</p> : null;
+  }
+  return (
+    <span className="crossfade-select">
+      <label htmlFor={selectId}><MicOff size={15} aria-hidden="true" /> เสียงร้องต้นฉบับ</label>
+      <select
+        id={selectId}
+        className="field"
+        value={value}
+        onChange={(event) => dispatch({ kind: "vocalCut", amount: Number(event.target.value) })}
+      >
+        {VOCAL_CUT_OPTIONS.map((amount) => <option key={amount} value={amount}>{VOCAL_CUT_LABELS[amount]}</option>)}
       </select>
     </span>
   );

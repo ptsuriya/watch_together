@@ -8,7 +8,7 @@ import { PartyButton, ScorePad, SpotlightBanner, TournamentPanel } from "./party
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
 import { EmojiPad } from "./reactions";
 import { MODE_LABELS, type RoomModel } from "./room-model";
-import { KeyControl } from "./room-panels";
+import { KeyControl, VocalCutSelect } from "./room-panels";
 import { Art, VideoThumb } from "./ui";
 
 /** Remote and karaoke, guest side: a phone remote for the host's screen. */
@@ -66,6 +66,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
                 : "โฮสต์ปรับคีย์เอง"}
             </p>
           )}
+          <VocalCutSelect value={state.vocalCut} canManage={canManage} dispatch={dispatch} />
           <p className="hint">
             {state.keyHelper
               ? "ครึ่งเสียงต่อครั้ง เพลงใหม่เริ่มที่คีย์ต้นฉบับ"

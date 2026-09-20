@@ -929,6 +929,7 @@ select.field { padding-right: 8px; }
   .watch-key > .crossfade-select, .watch-key > .helper-note { justify-self: start; }
 }
 .watch-key .helper-note { margin: 0; }
+.helper-note.is-warn { color: var(--amber-deep); }
 .helper-caveat { margin-top: -4px; color: var(--clay); font-size: 13px; }
 
 /* ---- Lining up with a shared screen ---- */

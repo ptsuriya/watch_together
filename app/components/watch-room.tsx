@@ -10,7 +10,7 @@ import { PartyButton, ScorePad, SpotlightBanner, TournamentPanel } from "./party
 import { SyncOffsetControl } from "./sync-offset";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
-import { KeyControl, MemberList, NotesPanel } from "./room-panels";
+import { KeyControl, MemberList, NotesPanel, VocalCutSelect } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art } from "./ui";
 
@@ -83,6 +83,7 @@ export function WatchRoom({
                 {state.keyControl === "owner" ? "โฮสต์ให้เฉพาะคนที่ขอเพลงนี้ปรับคีย์ได้" : "โฮสต์ปรับคีย์เอง"}
               </p>
             )}
+            <VocalCutSelect value={state.vocalCut} canManage={canManage} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} place="device" />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </div>
