@@ -664,6 +664,7 @@ export default function RoomClient({
       hasNext={state.queue.length > 0}
       semitones={isKaraoke(state.mode) && (isHost || state.mode === "singalong") ? state.key : undefined}
       vocalCut={state.vocalCut}
+      eq={state.eq}
       onNearEnd={isHost ? handleNearEnd : undefined}
       follow={isHost ? undefined : follow}
       offset={isHost ? 0 : syncOffset - state.hostOffset}

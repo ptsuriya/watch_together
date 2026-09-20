@@ -4,11 +4,14 @@
 //   room -> embed: { source: "kuma-listening-party", type: "hello" }
 //   room -> embed: { source: "kuma-listening-party", type: "key", semitones: -12..12 }
 //   room -> embed: { source: "kuma-listening-party", type: "vocals", amount: 0..1 }   (centre-channel removal)
+//   room -> embed: { source: "kuma-listening-party", type: "eq", low: -8..8, mid: -8..8, high: -8..8 }  (dB)
 //   room -> embed: { source: "kuma-listening-party", type: "probe" }   (measures the output level, for diagnostics)
 //   embed -> room: { source: "kuma-karaoke-key", type: "ready" | "status" | "error" | "probe", ... }
 //
 // Vocal removal is the old karaoke trick: most singers are mixed dead centre, so L−R cancels them — along with
-// anything else in the middle, which is why the room can ask for half of it instead of all of it.
+// anything else in the middle, which is why the room can ask for half of it instead of all of it. The bass and the
+// kick live down there too, so below the crossover the untouched mono mix is used instead: voices are rarely under
+// 180 Hz, but a kick drum always is. A three-band EQ sits at the end for whatever the room still wants to fix.
 //
 // The audio only goes through Web Audio once a key or a vocal cut is asked for; until then YouTube plays it untouched,
 // and YouTube's own ads always play untouched: the pitch shift steps aside while an ad is on screen.
@@ -20,6 +23,9 @@
   const VERSION = chrome.runtime.getManifest().version;
   const KEY_RANGE = 12;
   const RESUME_TIMEOUT_MS = 1500;
+  /** Voices rarely live below this; kick drums always do. */
+  const CROSSOVER_HZ = 180;
+  const EQ_RANGE_DB = 8;
 
   let semitones = 0;
   /** 0 keeps the mix as it is, 1 subtracts the whole centre channel, and anything between mixes the two. */
@@ -31,6 +37,8 @@
   let stretch = null;
   let meter = null;
   let killer = null;
+  let eq = null;
+  let eqGains = { low: 0, mid: 0, high: 0 };
   let adPlaying = false;
   let adObserver = null;
 
@@ -58,6 +66,7 @@
     }
 
     if (!killer) killer = buildKiller();
+    if (!eq) eq = buildEq();
 
     if (sourceElement !== video) {
       source?.disconnect();
@@ -91,15 +100,50 @@
     const side = context.createGain();
     // L − R is quieter than the mix it came from on most songs; bring it back up a little.
     side.gain.value = 1.4;
+    // Everything the cancellation would hollow out — kick, bass, floor tom — comes back from the untouched mix.
+    const sideHigh = context.createBiquadFilter();
+    sideHigh.type = "highpass";
+    sideHigh.frequency.value = CROSSOVER_HZ;
+    const bass = context.createGain();
+    const bassLow = context.createBiquadFilter();
+    bassLow.type = "lowpass";
+    bassLow.frequency.value = CROSSOVER_HZ;
     const dry = context.createGain();
     const out = context.createGain();
     // Wired once and left alone; only what goes in and what comes out changes.
     splitter.connect(side, 0);
     splitter.connect(invert, 1);
     invert.connect(side);
-    side.connect(out);
+    side.connect(sideHigh);
+    sideHigh.connect(out);
+    bass.connect(bassLow);
+    bassLow.connect(out);
     dry.connect(out);
-    return { splitter, dry, side, out };
+    return { splitter, dry, side, bass, out };
+  }
+
+  /** Three plain bands at the end of the chain, so a thin karaoke mix can be pushed back into shape. */
+  function buildEq() {
+    const low = context.createBiquadFilter();
+    low.type = "lowshelf";
+    low.frequency.value = 160;
+    const mid = context.createBiquadFilter();
+    mid.type = "peaking";
+    mid.frequency.value = 1000;
+    mid.Q.value = 0.9;
+    const high = context.createBiquadFilter();
+    high.type = "highshelf";
+    high.frequency.value = 5000;
+    low.connect(mid);
+    mid.connect(high);
+    return { low, mid, high, input: low, out: high };
+  }
+
+  function applyEq() {
+    if (!eq) return;
+    eq.low.gain.value = eqGains.low;
+    eq.mid.gain.value = eqGains.mid;
+    eq.high.gain.value = eqGains.high;
   }
 
   /** YouTube marks its player while an ad plays; the ad must reach the speakers exactly as YouTube sent it. */
@@ -122,15 +166,19 @@
     source.disconnect();
     stretch?.disconnect();
     killer.out.disconnect();
+    eq.out.disconnect();
 
     // Straight through while the song is in its original key with every voice in it, or while an ad is playing.
     const shifted = semitones !== 0 && !adPlaying;
     const cutting = vocalCut > 0 && !adPlaying;
+    const toning = !adPlaying && (eqGains.low !== 0 || eqGains.mid !== 0 || eqGains.high !== 0);
     let node = source;
     if (cutting) {
       killer.dry.gain.value = 1 - vocalCut;
       killer.side.gain.value = 1.4 * vocalCut;
+      killer.bass.gain.value = vocalCut;
       source.connect(killer.splitter);
+      source.connect(killer.bass);
       source.connect(killer.dry);
       node = killer.out;
     }
@@ -138,6 +186,11 @@
       stretch.schedule({ active: true, semitones });
       node.connect(stretch);
       node = stretch;
+    }
+    if (toning) {
+      applyEq();
+      node.connect(eq.input);
+      node = eq.out;
     }
     node.connect(context.destination);
     node.connect(meter);
@@ -162,8 +215,9 @@
 
   async function apply() {
     // Nothing is asked of the audio yet and it has never been routed: leave YouTube's own path alone.
-    if (semitones === 0 && vocalCut === 0 && !source) {
-      post("status", { semitones, vocalCut, processing: false });
+    const quiet = semitones === 0 && vocalCut === 0 && eqGains.low === 0 && eqGains.mid === 0 && eqGains.high === 0;
+    if (quiet && !source) {
+      post("status", { semitones, vocalCut, eq: eqGains, processing: false });
       return;
     }
     try {
@@ -172,12 +226,12 @@
       const shifted = semitones !== 0 && !adPlaying;
       const latency = shifted ? await stretch.latency() : 0;
       post("status", {
-        semitones, vocalCut, adPlaying,
-        processing: shifted || (vocalCut > 0 && !adPlaying),
+        semitones, vocalCut, adPlaying, eq: eqGains,
+        processing: !adPlaying && (shifted || vocalCut > 0 || eqGains.low !== 0 || eqGains.mid !== 0 || eqGains.high !== 0),
         latencyMs: Math.round(latency * 1000),
       });
     } catch (error) {
-      post("error", { semitones, vocalCut, message: error instanceof Error ? error.message : String(error) });
+      post("error", { semitones, vocalCut, eq: eqGains, message: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -192,6 +246,13 @@
     return apply();
   }
 
+  function setEq(bands) {
+    const band = (value) => Math.max(-EQ_RANGE_DB, Math.min(EQ_RANGE_DB, Number.isFinite(value) ? Math.round(value) : 0));
+    eqGains = { low: band(bands.low), mid: band(bands.mid), high: band(bands.high) };
+    applyEq();
+    return apply();
+  }
+
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent) return;
     const data = event.data;
@@ -199,6 +260,7 @@
     if (data.type === "hello") post("ready");
     else if (data.type === "key" && Number.isFinite(data.semitones)) void setKey(data.semitones);
     else if (data.type === "vocals" && Number.isFinite(data.amount)) void setVocals(data.amount);
+    else if (data.type === "eq") void setEq(data);
     else if (data.type === "probe") void probe();
   });
 

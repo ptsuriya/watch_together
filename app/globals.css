@@ -930,6 +930,18 @@ select.field { padding-right: 8px; }
 }
 .watch-key .helper-note { margin: 0; }
 .helper-note.is-warn { color: var(--amber-deep); }
+
+.eq-control { display: grid; gap: 6px; }
+.eq-control summary {
+  display: flex; align-items: center; gap: 6px; color: var(--bark); font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.eq-control summary::-webkit-details-marker { display: none; }
+.eq-control summary strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.eq-control summary::after { content: "▾"; color: var(--clay); font-size: 12px; }
+.eq-control[open] summary::after { content: "▴"; }
+.eq-band { display: grid; grid-template-columns: 42px minmax(0, 1fr) 34px; align-items: center; gap: 8px; font-size: 13px; }
+.eq-band input[type="range"] { min-width: 0; accent-color: var(--amber); }
+.eq-band em { color: var(--clay); font-style: normal; text-align: right; font-variant-numeric: tabular-nums; }
 .helper-caveat { margin-top: -4px; color: var(--clay); font-size: 13px; }
 
 /* ---- Lining up with a shared screen ---- */

@@ -1,9 +1,9 @@
 "use client";
 
 import { Play } from "lucide-react";
-import { type CSSProperties, useEffect, useRef, useState, type RefObject } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { readHelperMessage, sendToHelper } from "../../lib/karaoke-key";
-import type { QueueItem } from "../../lib/room-state";
+import { FLAT_EQ, type QueueItem, type RoomEq } from "../../lib/room-state";
 import { canCrossfade, loadYouTubeApi, PlayerState, type YouTubePlayer as Player } from "../../lib/youtube";
 
 /** Where the host's playback was, and the local time that snapshot arrived. */
@@ -111,6 +111,7 @@ export function YouTubePlayer({
   hasNext = false,
   semitones,
   vocalCut = 0,
+  eq,
   follow,
   offset = 0,
   resume,
@@ -134,6 +135,8 @@ export function YouTubePlayer({
   semitones?: number;
   /** Karaoke: how much of the centre channel the extension should subtract, to thin the guide vocal. */
   vocalCut?: number;
+  /** Karaoke: the room's three EQ bands, in dB. */
+  eq?: RoomEq;
   /** Guests: keep the player within a second or two of the host. */
   follow?: PlaybackFollow;
   /** Guests: seconds this device plays ahead of the host, to cancel the delay of a screen someone is sharing. */
@@ -159,7 +162,10 @@ export function YouTubePlayer({
   const nearEndItemRef = useRef<string | null>(null);
   /** The room's own volume. Read from the player between fades, never from the middle of one. */
   const baseVolumeRef = useRef(100);
-  const latest = useRef({ playing, follow, offset, resume, semitones, vocalCut, onPlayingChange, onEnded, onError });
+  const { low, mid, high } = eq ?? FLAT_EQ;
+  // Kept as three numbers so the effect below can depend on the values, not on a new object every render.
+  const tone = useMemo(() => ({ low, mid, high }), [high, low, mid]);
+  const latest = useRef({ playing, follow, offset, resume, semitones, vocalCut, tone, onPlayingChange, onEnded, onError });
   /** The offset this player has already moved to, so a fresh one can move it at once. */
   const offsetRef = useRef(offset);
   const [active, setActive] = useState(0);
@@ -172,7 +178,7 @@ export function YouTubePlayer({
   const sendsKey = semitones !== undefined;
 
   useEffect(() => {
-    latest.current = { playing, follow, offset, resume, semitones, vocalCut, onPlayingChange, onEnded, onError };
+    latest.current = { playing, follow, offset, resume, semitones, vocalCut, tone, onPlayingChange, onEnded, onError };
   });
 
   useEffect(() => {
@@ -364,6 +370,11 @@ export function YouTubePlayer({
     sendToHelper(decksRef.current[activeRef.current].player?.getIframe(), { type: "vocals", amount: vocalCut });
   }, [active, item.id, readyCount, semitones, vocalCut]);
 
+  useEffect(() => {
+    if (semitones === undefined) return;
+    sendToHelper(decksRef.current[activeRef.current].player?.getIframe(), { type: "eq", ...tone });
+  }, [active, item.id, readyCount, semitones, tone]);
+
   // A freshly loaded embed announces itself; it needs the current key again.
   useEffect(() => {
     if (!sendsKey) return;
@@ -373,6 +384,7 @@ export function YouTubePlayer({
       if (message?.type !== "ready" || !frame || event.source !== frame.contentWindow) return;
       sendToHelper(frame, { type: "key", semitones: latest.current.semitones ?? 0 });
       sendToHelper(frame, { type: "vocals", amount: latest.current.vocalCut });
+      sendToHelper(frame, { type: "eq", ...latest.current.tone });
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);

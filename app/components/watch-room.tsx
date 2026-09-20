@@ -10,7 +10,7 @@ import { PartyButton, ScorePad, SpotlightBanner, TournamentFlashCard, Tournament
 import { SyncOffsetControl } from "./sync-offset";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
-import { KeyControl, MemberList, NotesPanel, VocalCutSelect } from "./room-panels";
+import { EqControl, KeyControl, MemberList, NotesPanel, VocalCutSelect } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art } from "./ui";
 
@@ -84,6 +84,7 @@ export function WatchRoom({
               </p>
             )}
             <VocalCutSelect value={state.vocalCut} canManage={canManage} dispatch={dispatch} />
+            <EqControl value={state.eq} canManage={canManage} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} place="device" />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </div>

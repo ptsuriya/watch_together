@@ -36,7 +36,11 @@ export function readHelperMessage(event: MessageEvent): HelperMessage | null {
 
 export function sendToHelper(
   frame: HTMLIFrameElement | null | undefined,
-  message: { type: "hello" } | { type: "key"; semitones: number } | { type: "vocals"; amount: number },
+  message:
+    | { type: "hello" }
+    | { type: "key"; semitones: number }
+    | { type: "vocals"; amount: number }
+    | { type: "eq"; low: number; mid: number; high: number },
 ) {
   frame?.contentWindow?.postMessage({ source: ROOM_SOURCE, ...message }, EMBED_ORIGIN);
 }

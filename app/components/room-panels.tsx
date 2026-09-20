@@ -3,14 +3,15 @@
 import { QRCodeSVG } from "qrcode.react";
 import {
   AArrowDown, AArrowUp, Check, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, MicOff, MicVocal, Minus, MonitorPlay,
-  Plus, QrCode, RotateCcw, Tv,
+  Plus, QrCode, RotateCcw, SlidersHorizontal, Tv,
   MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
 import {
-  CROSSFADE_OPTIONS, formatKey, KEY_CONTROL_OPTIONS, KEY_RANGE, KEY_UNIT, MAX_NOTES, VOCAL_CUT_OPTIONS,
-  type KeyControl as KeyControlMode, type KeyStep, type RoomIntent, type RoomMode,
+  CROSSFADE_OPTIONS, EQ_RANGE, FLAT_EQ, formatKey, isFlatEq, KEY_CONTROL_OPTIONS, KEY_RANGE, KEY_UNIT, MAX_NOTES,
+  VOCAL_CUT_OPTIONS,
+  type KeyControl as KeyControlMode, type KeyStep, type RoomEq, type RoomIntent, type RoomMode,
 } from "../../lib/room-state";
 import { canCrossfade } from "../../lib/youtube";
 import { MODE_LABELS, type RoomModel } from "./room-model";
@@ -403,6 +404,49 @@ export function VocalCutSelect({ value, canManage, dispatch }: {
         {VOCAL_CUT_OPTIONS.map((amount) => <option key={amount} value={amount}>{VOCAL_CUT_LABELS[amount]}</option>)}
       </select>
     </span>
+  );
+}
+
+const EQ_BANDS = [
+  { key: "low", label: "ทุ้ม" },
+  { key: "mid", label: "กลาง" },
+  { key: "high", label: "แหลม" },
+] as const;
+
+/** Karaoke: three bands for putting a thinned mix back into shape. Folded away until someone wants it. */
+export function EqControl({ value, canManage, dispatch }: {
+  value: RoomEq;
+  canManage: boolean;
+  dispatch: (intent: RoomIntent) => void;
+}) {
+  const groupId = useId();
+  if (!canManage) return null;
+  const flat = isFlatEq(value);
+  return (
+    <details className="eq-control" open={!flat}>
+      <summary>
+        <SlidersHorizontal size={15} aria-hidden="true" /> ปรับเสียง
+        <strong>{flat ? "ปกติ" : EQ_BANDS.map((band) => `${value[band.key] > 0 ? "+" : ""}${value[band.key]}`).join(" / ")}</strong>
+      </summary>
+      {EQ_BANDS.map((band) => (
+        <label key={band.key} className="eq-band" htmlFor={`${groupId}-${band.key}`}>
+          <span>{band.label}</span>
+          <input
+            id={`${groupId}-${band.key}`}
+            type="range"
+            min={-EQ_RANGE}
+            max={EQ_RANGE}
+            step={1}
+            value={value[band.key]}
+            onChange={(event) => dispatch({ kind: "eq", eq: { ...value, [band.key]: Number(event.target.value) } })}
+          />
+          <em>{value[band.key] > 0 ? `+${value[band.key]}` : value[band.key]}</em>
+        </label>
+      ))}
+      <button type="button" className="text-btn" onClick={() => dispatch({ kind: "eq", eq: FLAT_EQ })}>
+        <RotateCcw size={14} aria-hidden="true" /> กลับเป็นปกติ
+      </button>
+    </details>
   );
 }
 
