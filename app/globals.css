@@ -468,8 +468,8 @@ select.field { padding-right: 8px; }
 /* With the notes hidden the video takes the full width, capped so it stays a comfortable size. */
 @media (min-width: 1024px) {
   .watch-grid.no-notes .player-card { grid-column: 1 / -1; width: 100%; max-width: 1100px; margin-inline: auto; }
-  /* Sing-along: the words are in the video, so give it more room than a plain no-notes room. */
-  .watch-grid.is-singalong .player-card { max-width: 1280px; }
+  /* Sing-along: big video, but never so tall that the key and the emoji fall off the screen. */
+  .watch-grid.is-singalong .player-card { max-width: min(1280px, max(560px, calc((100dvh - 330px) * 16 / 9))); }
 }
 @media (max-width: 1023px) {
   .player-card { order: 1; }
@@ -922,6 +922,12 @@ select.field { padding-right: 8px; }
   display: grid; gap: 10px; padding: 12px;
   border: 2px solid var(--line); border-radius: 16px; background: rgba(255, 240, 204, 0.55);
 }
+@media (min-width: 760px) {
+  /* Key on the left, everything it needs to say on the right, so the video keeps the height. */
+  .watch-key { grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 20px; }
+  .watch-key > .key-control { grid-row: span 3; }
+  .watch-key > .crossfade-select, .watch-key > .helper-note { justify-self: start; }
+}
 .watch-key .helper-note { margin: 0; }
 .helper-caveat { margin-top: -4px; color: var(--clay); font-size: 13px; }
 
@@ -931,8 +937,13 @@ select.field { padding-right: 8px; }
   display: grid; gap: 6px; padding: 10px 12px;
   border: 2px dashed var(--line); border-radius: 16px; background: rgba(255, 240, 204, 0.4);
 }
-.sync-offset label { display: flex; align-items: center; gap: 6px; color: var(--bark); font-size: 14px; font-weight: 700; }
-.sync-offset label strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.sync-offset summary {
+  display: flex; align-items: center; gap: 6px; color: var(--bark); font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.sync-offset summary::-webkit-details-marker { display: none; }
+.sync-offset summary strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.sync-offset summary::after { content: "▾"; color: var(--clay); font-size: 12px; }
+.sync-offset[open] summary::after { content: "▴"; }
 .sync-offset small { color: var(--clay); font-size: 12px; }
 .sync-offset-row { display: flex; align-items: center; gap: 8px; }
 .sync-offset-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--amber); }
@@ -993,6 +1004,23 @@ select.field { padding-right: 8px; }
   border: 2px solid var(--bark); border-radius: 14px; background: var(--white); color: var(--bark); cursor: pointer;
 }
 .score-star.is-on { background: var(--gold); }
+
+.side-board { display: grid; gap: 10px; padding: 16px; }
+.side-board h2 { color: var(--bark); font-size: 16px; font-weight: 800; }
+
+.score-table { display: grid; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.score-table li {
+  display: grid; grid-template-columns: 22px 1fr auto auto; align-items: center; gap: 8px;
+  padding: 6px 10px; border: 2px solid var(--line); border-radius: 12px; background: var(--white);
+  color: var(--bark); font-size: 14px;
+}
+.score-table li.is-lead { border-color: var(--bark); background: var(--honey); }
+.score-rank { display: inline-flex; justify-content: center; color: var(--amber-deep); font-weight: 800; }
+.score-name { min-width: 0; overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.score-meta { color: var(--clay); font-size: 12px; white-space: nowrap; }
+.score-meta em { font-style: normal; color: var(--terra-deep); }
+.score-table strong { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.score-running { color: var(--clay); }
 
 .score-live {
   position: absolute; right: 20px; bottom: 14px; z-index: 3;

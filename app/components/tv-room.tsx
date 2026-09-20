@@ -6,7 +6,7 @@ import { formatKey, peekNext, singerOf } from "../../lib/room-state";
 import type { HelperStatus } from "../../lib/karaoke-key";
 import { ChatFlights, type ChatMessage } from "./chat";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
-import { PartyButton, ScoreBoard, SpotlightBanner } from "./party";
+import { PartyButton, ScoreBoard, ScoreTable, SpotlightBanner } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { KeyControl, RoomQr } from "./room-panels";
@@ -143,6 +143,13 @@ export function TvRoom({
           {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
           <PlaybackButtons state={state} dispatch={dispatch} />
         </section>
+
+        {state.scoring && state.standings.length > 0 && (
+          <section className="card side-board" aria-labelledby="tv-board-title">
+            <h2 id="tv-board-title">ตารางคะแนน</h2>
+            <ScoreTable state={state} limit={5} />
+          </section>
+        )}
 
         <section className="card side-queue" aria-labelledby="tv-queue-title">
           <div className="card-head">

@@ -60,9 +60,9 @@ If the room is on a call — someone shares their screen in Discord, Meet or Zoo
 
 - **Per-person queue limit** — 1, 2, 3, 5 or unlimited songs waiting per guest. Hosts and co-hosts are exempt. The host's page counts what each member already has queued and, when someone is over, sends that one person a note back instead of queueing the song.
 - **What plays next** — in order, at random (the shared screen says "สุ่มจากคิว" instead of naming the next song, so it stays a surprise), or by vote: every row gets a thumbs-up, one per person, and the most-wanted song goes next.
-- **Mic bomb** — the room hands the mic to someone at random and gives them 60 seconds to find a song; whatever they queue jumps to the front. Their phone counts down, the TV shows whose turn it is, and the room picks someone else next time.
+- **Mic bomb** — the room hands the mic to someone at random and gives them 30 s to 2 minutes (the host's choice) to find a song; whatever they queue jumps to the front. Their phone counts down, the TV shows whose turn it is, and the room picks someone else next time.
 - **Blind karaoke** — every song queued is handed to a different person to sing. The queue and the TV say who sings, not who picked it.
-- **Scoring** — everyone rates the song playing from 1 to 5 stars, changeable until it ends. The shared screen shows the running average, then a result card for a few seconds after the song ends.
+- **Scoring** — everyone rates the song playing from 1 to 5 stars, changeable until it ends. The shared screen shows the running average, then a result card for a few seconds after the song ends. Each song's average is added to a table for the night, kept per singer; letting a mic bomb run out costs that person a point, and the host can wipe the table from the settings.
 
 The host's page is the referee: votes and scores count by the member id on the envelope, never by anything the sender puts in the payload, and a guest cannot aim the mic bomb at anyone.
 

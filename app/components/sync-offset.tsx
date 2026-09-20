@@ -61,11 +61,12 @@ export function SyncOffsetControl({ offset, onChange, isHost = false }: {
 }) {
   const sliderId = useId();
   return (
-    <div className="sync-offset">
-      <label htmlFor={sliderId}>
+    <details className="sync-offset" open={offset !== 0}>
+      <summary>
         <Timer size={15} aria-hidden="true" /> ปรับหน่วงเวลา
         <strong>{formatOffset(offset)}</strong>
-      </label>
+      </summary>
+      <label htmlFor={sliderId} className="sr-only">ปรับหน่วงเวลาเป็นวินาที</label>
       <div className="sync-offset-row">
         <button type="button" className="icon-btn" onClick={() => onChange(offset - OFFSET_NUDGE)} aria-label="ตามหลังอีก 0.1 วินาที" title="ตามหลัง">
           <Minus size={16} aria-hidden="true" />
@@ -98,6 +99,6 @@ export function SyncOffsetControl({ offset, onChange, isHost = false }: {
       <a className="sync-offset-help" href="/discord" target="_blank" rel="noopener noreferrer">
         <HelpCircle size={14} aria-hidden="true" /> วิธีดูด้วยกันผ่าน Discord
       </a>
-    </div>
+    </details>
   );
 }

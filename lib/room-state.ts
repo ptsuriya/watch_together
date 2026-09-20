@@ -71,6 +71,8 @@ export type RoomState = {
   queueOrder: QueueOrder;
   /** The party game running in the room. */
   game: PartyGame;
+  /** How long the mic bomb gives someone to find a song. */
+  bombSeconds: number;
   /** Everyone rates the song that is playing, and the room sees the result when it ends. */
   scoring: boolean;
   /** Mic bomb: whose turn it is to find a song, and how long they have left. */
@@ -79,6 +81,8 @@ export type RoomState = {
   scores: Record<string, number>;
   /** The result card for the song that just ended; the host clears it after a few seconds. */
   lastScore: ScoreResult | null;
+  /** Every song's average, kept per singer, so the night has a running table. */
+  standings: Standing[];
   /**
    * Seconds the host's own screen runs ahead of the room. The host's ears can be late — Bluetooth headphones, a
    * soundbar — and only the other screens can move to meet them, so this travels with the room.
@@ -104,12 +108,39 @@ export const PARTY_GAMES = ["off", "bomb", "blind"] as const satisfies readonly 
 export const QUEUE_LIMITS = [0, 1, 2, 3, 5] as const;
 /** Long enough to find a song on a phone, short enough to stay a game. */
 export const BOMB_SECONDS = 60;
+export const BOMB_SECOND_OPTIONS = [30, 45, 60, 90, 120] as const;
 export const SCORE_MAX = 5;
 /** How long the room looks at the score of the song that just ended. */
 export const SCORE_SHOW_MS = 12_000;
 
 export type Spotlight = { memberId: string; name: string; seconds: number };
 export type ScoreResult = { title: string; singer: string; average: number; count: number };
+/** One singer's night: the songs they were scored on, and the times the mic bomb ran out on them. */
+export type Standing = { name: string; total: number; songs: number; misses: number };
+export const MAX_STANDINGS = 40;
+/** What letting the mic bomb run out costs, in points. */
+export const BOMB_PENALTY = 1;
+
+/** The table the room reads: most points first, and more songs breaks a tie. */
+export function standingsBoard(state: RoomState) {
+  return [...state.standings]
+    .map((row) => ({
+      ...row,
+      points: Math.round((row.total - row.misses * BOMB_PENALTY) * 10) / 10,
+      average: row.songs > 0 ? Math.round((row.total / row.songs) * 10) / 10 : 0,
+    }))
+    .sort((a, b) => b.points - a.points || b.songs - a.songs);
+}
+
+/** Adds to one singer's row, making it if this is their first time on the board. */
+function addStanding(standings: Standing[], name: string, change: Partial<Standing>) {
+  if (standings.some((row) => row.name === name)) {
+    return standings.map((row) => (row.name === name
+      ? { ...row, total: row.total + (change.total ?? 0), songs: row.songs + (change.songs ?? 0), misses: row.misses + (change.misses ?? 0) }
+      : row));
+  }
+  return [...standings, { name, total: change.total ?? 0, songs: change.songs ?? 0, misses: change.misses ?? 0 }].slice(-MAX_STANDINGS);
+}
 
 export const MAX_COHOSTS = 10;
 
@@ -142,26 +173,30 @@ export type RoomIntent =
   | { kind: "queueLimit"; count: number }
   | { kind: "queueOrder"; value: QueueOrder }
   | { kind: "game"; value: PartyGame }
+  | { kind: "bombSeconds"; seconds: number }
   | { kind: "scoring"; enabled: boolean }
   /** The host fills in who voted; a guest only says which song. */
   | { kind: "vote"; itemId: string; memberId?: string }
   | { kind: "score"; value: number; memberId?: string }
   /** Hand the mic to someone at random. The host picks the person and the time. */
   | { kind: "bomb"; memberId?: string; name?: string; seconds?: number }
-  | { kind: "spotlightOff" }
-  | { kind: "scoreClear" };
+  /** missed: the countdown ran out with no song, which costs that person a point. */
+  | { kind: "spotlightOff"; missed?: boolean }
+  | { kind: "scoreClear" }
+  | { kind: "standingsReset" };
 
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
-  "queueLimit", "queueOrder", "game", "scoring", "bomb",
+  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
 export type GuestIntent = Extract<
   RoomIntent,
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
-    | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "scoring" | "vote" | "score" | "bomb" }
+    | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
+    | "bomb" | "standingsReset" }
 >;
 
 export type RoomEvent =
@@ -192,8 +227,9 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
     notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
-    cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", scoring: false, spotlight: null, scores: {}, lastScore: null,
-    hostOffset: 0,
+    cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
+    spotlight: null, scores: {}, lastScore: null,
+    standings: [], hostOffset: 0,
   };
 }
 
@@ -298,6 +334,10 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       if (value === state.game) return state;
       return { ...state, game: value, spotlight: value === "bomb" ? state.spotlight : null };
     }
+    case "bombSeconds": {
+      const seconds = BOMB_SECOND_OPTIONS.find((option) => option === intent.seconds) ?? BOMB_SECONDS;
+      return seconds === state.bombSeconds ? state : { ...state, bombSeconds: seconds };
+    }
     case "scoring": {
       if (intent.enabled === state.scoring) return state;
       return { ...state, scoring: intent.enabled, scores: {}, lastScore: null };
@@ -321,10 +361,16 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       if (!intent.memberId || !intent.name) return state;
       return { ...state, spotlight: { memberId: intent.memberId, name: intent.name, seconds: intent.seconds ?? BOMB_SECONDS } };
     }
-    case "spotlightOff":
-      return state.spotlight ? { ...state, spotlight: null } : state;
+    case "spotlightOff": {
+      if (!state.spotlight) return state;
+      const missed = intent.missed === true && state.scoring;
+      const standings = missed ? addStanding(state.standings, state.spotlight.name, { misses: 1 }) : state.standings;
+      return { ...state, spotlight: null, standings };
+    }
     case "scoreClear":
       return state.lastScore ? { ...state, lastScore: null } : state;
+    case "standingsReset":
+      return state.standings.length === 0 ? state : { ...state, standings: [], scores: {}, lastScore: null };
   }
 }
 
@@ -349,18 +395,19 @@ function pickNext(state: RoomState): [QueueItem | null, QueueItem[]] {
 }
 
 /** The song is over: turn the scores people sent into the card the room sees, and start the next one clean. */
-function closeScores(state: RoomState): Pick<RoomState, "scores" | "lastScore"> {
+function closeScores(state: RoomState): Pick<RoomState, "scores" | "lastScore" | "standings"> {
   const values = Object.values(state.scores);
-  if (!state.scoring || !state.nowPlaying || values.length === 0) return { scores: {}, lastScore: null };
+  if (!state.scoring || !state.nowPlaying || values.length === 0) {
+    return { scores: {}, lastScore: null, standings: state.standings };
+  }
   const total = values.reduce((sum, value) => sum + value, 0);
+  const average = Math.round((total / values.length) * 10) / 10;
+  const singer = singerOf(state.nowPlaying);
+  const standings = addStanding(state.standings, singer, { total: average, songs: 1 });
   return {
     scores: {},
-    lastScore: {
-      title: state.nowPlaying.title,
-      singer: singerOf(state.nowPlaying),
-      average: Math.round((total / values.length) * 10) / 10,
-      count: values.length,
-    },
+    lastScore: { title: state.nowPlaying.title, singer, average, count: values.length },
+    standings,
   };
 }
 
@@ -468,10 +515,12 @@ export function sanitizeState(value: unknown): RoomState | null {
     queueLimit: QUEUE_LIMITS.find((option) => option === value.queueLimit) ?? 0,
     queueOrder: QUEUE_ORDERS.find((option) => option === value.queueOrder) ?? "line",
     game: PARTY_GAMES.find((option) => option === value.game) ?? "off",
+    bombSeconds: BOMB_SECOND_OPTIONS.find((option) => option === value.bombSeconds) ?? BOMB_SECONDS,
     scoring: value.scoring === true,
     spotlight: sanitizeSpotlight(value.spotlight),
     scores: sanitizeScores(value.scores),
     lastScore: sanitizeScoreResult(value.lastScore),
+    standings: Array.isArray(value.standings) ? sanitizeStandings(value.standings) : [],
     hostOffset: clampOffset(value.hostOffset),
   };
 }
@@ -496,6 +545,23 @@ function sanitizeScores(value: unknown): Record<string, number> {
     scores[memberId] = Math.max(1, Math.min(SCORE_MAX, Math.round(score)));
   }
   return scores;
+}
+
+function sanitizeStandings(value: unknown[]): Standing[] {
+  return value.slice(0, MAX_STANDINGS).flatMap((row) => {
+    if (!isRecord(row)) return [];
+    const name = text(row.name, 32);
+    const songs = typeof row.songs === "number" && Number.isFinite(row.songs) ? Math.max(0, Math.round(row.songs)) : 0;
+    const total = typeof row.total === "number" && Number.isFinite(row.total) ? Math.max(0, row.total) : 0;
+    const misses = typeof row.misses === "number" && Number.isFinite(row.misses) ? Math.max(0, Math.round(row.misses)) : 0;
+    if (!name || (songs === 0 && misses === 0)) return [];
+    return [{
+      name,
+      songs: Math.min(songs, 999),
+      total: Math.min(Math.round(total * 10) / 10, songs * SCORE_MAX),
+      misses: Math.min(misses, 999),
+    }];
+  });
 }
 
 function sanitizeScoreResult(value: unknown): ScoreResult | null {
@@ -557,6 +623,8 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
     }
     case "scoring":
       return typeof value.enabled === "boolean" ? { kind: "scoring", enabled: value.enabled } : null;
+    case "bombSeconds":
+      return typeof value.seconds === "number" ? { kind: "bombSeconds", seconds: value.seconds } : null;
     case "vote": {
       // Who voted comes from the envelope the host trusts, never from the payload.
       const itemId = text(value.itemId, 64);
@@ -566,6 +634,8 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
       return typeof value.value === "number" ? { kind: "score", value: value.value } : null;
     case "bomb":
       return { kind: "bomb" };
+    case "standingsReset":
+      return { kind: "standingsReset" };
     default:
       return null;
   }

@@ -1,9 +1,9 @@
 "use client";
 
-import { Bomb, Dices, ListOrdered, SlidersHorizontal, Star, ThumbsUp, Trophy } from "lucide-react";
+import { Bomb, Dices, ListOrdered, Medal, SlidersHorizontal, Star, ThumbsUp, Timer, Trash2, Trophy } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
-  isKaraoke, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, scoreAverage, SCORE_MAX,
+  BOMB_SECOND_OPTIONS, isKaraoke, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, scoreAverage, SCORE_MAX, standingsBoard,
   type PartyGame, type QueueItem, type QueueOrder, type RoomIntent, type RoomState, type Spotlight,
 } from "../../lib/room-state";
 import type { RoomModel } from "./room-model";
@@ -18,7 +18,7 @@ const QUEUE_ORDER_LABELS: Record<QueueOrder, { name: string; hint: string }> = {
 
 const GAME_LABELS: Record<PartyGame, { name: string; hint: string }> = {
   off: { name: "ปิด", hint: "ร้องกันไปตามคิวปกติ" },
-  bomb: { name: "ระเบิดไมค์", hint: "สุ่มคนในห้องมารับไมค์ ให้เวลาหาเพลง 1 นาที เพลงที่หาได้แทรกเป็นเพลงถัดไป" },
+  bomb: { name: "ระเบิดไมค์", hint: "สุ่มคนในห้องมารับไมค์ ตั้งเวลาให้หาเพลงได้ เพลงที่หาได้แทรกเป็นเพลงถัดไป หมดเวลาแล้วไม่ได้เพลงจะโดนหักคะแนน" },
   blind: { name: "ร้องเพลงมั่ว", hint: "เพลงที่เพิ่มเข้ามาจะถูกสุ่มให้คนอื่นร้อง เจ้าตัวไม่ได้เลือกเอง" },
 };
 
@@ -32,6 +32,7 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
   const limitId = useId();
   const orderId = useId();
   const gameId = useId();
+  const bombId = useId();
 
   if (!canManage) {
     return (
@@ -94,9 +95,22 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
         </div>
 
         {state.game === "bomb" && (
-          <button type="button" className="btn btn-honey" onClick={() => dispatch({ kind: "bomb" })}>
-            <Bomb size={18} aria-hidden="true" /> ระเบิดไมค์ตอนนี้
-          </button>
+          <div className="party-row">
+            <label htmlFor={bombId}><Timer size={16} aria-hidden="true" /> ให้เวลาหาเพลง</label>
+            <select
+              id={bombId}
+              className="field"
+              value={state.bombSeconds}
+              onChange={(event) => dispatch({ kind: "bombSeconds", seconds: Number(event.target.value) })}
+            >
+              {BOMB_SECOND_OPTIONS.map((seconds) => (
+                <option key={seconds} value={seconds}>{seconds >= 60 ? `${seconds / 60} นาที${seconds % 60 ? ` ${seconds % 60} วิ` : ""}` : `${seconds} วินาที`}</option>
+              ))}
+            </select>
+            <button type="button" className="btn btn-honey" onClick={() => dispatch({ kind: "bomb" })}>
+              <Bomb size={18} aria-hidden="true" /> ระเบิดไมค์ตอนนี้
+            </button>
+          </div>
         )}
 
         <label className="party-check">
@@ -106,8 +120,18 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
             onChange={(event) => dispatch({ kind: "scoring", enabled: event.target.checked })}
           />
           <span><Star size={16} aria-hidden="true" /> ให้คะแนนเพลงที่กำลังเล่น</span>
-          <small>ทุกคนให้ดาวได้คนละครั้ง ห้องเห็นคะแนนรวมตอนเพลงจบ</small>
+          <small>ทุกคนให้ดาวได้คนละครั้ง คะแนนของแต่ละเพลงสะสมเป็นตารางทั้งคืน และปล่อยให้ระเบิดไมค์หมดเวลาจะโดนหัก 1 คะแนน</small>
         </label>
+
+        {state.standings.length > 0 && (
+          <div className="party-row">
+            <span className="party-row-title"><Trophy size={16} aria-hidden="true" /> ตารางคะแนนคืนนี้</span>
+            <ScoreTable state={state} />
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "standingsReset" })}>
+              <Trash2 size={16} aria-hidden="true" /> ล้างตารางคะแนน
+            </button>
+          </div>
+        )}
 
         <div className="party-row">
           <span className="party-row-title">จอและเสียง</span>
@@ -187,7 +211,29 @@ export function ScorePad({ state, selfId, dispatch }: {
         ))}
       </div>
       <small>{mine ? `คุณให้ ${mine} ดาว เปลี่ยนได้จนกว่าเพลงจะจบ` : "แตะดาวเพื่อให้คะแนน"}</small>
+      <ScoreTable state={state} limit={5} />
     </section>
+  );
+}
+
+/** The night so far: every singer's points, minus what the mic bomb cost them. */
+export function ScoreTable({ state, limit }: { state: RoomState; limit?: number }) {
+  const board = standingsBoard(state);
+  if (board.length === 0) return null;
+  const shown = limit ? board.slice(0, limit) : board;
+  return (
+    <ol className="score-table">
+      {shown.map((row, index) => (
+        <li key={row.name} className={index === 0 ? "is-lead" : undefined}>
+          <span className="score-rank" aria-hidden="true">{index === 0 ? <Medal size={15} /> : index + 1}</span>
+          <span className="score-name">{row.name}</span>
+          <span className="score-meta">
+            {row.songs} เพลง{row.misses > 0 && <em> · พลาด {row.misses}</em>}
+          </span>
+          <strong>{row.points}</strong>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -196,12 +242,14 @@ export function ScoreBoard({ state }: { state: RoomState }) {
   const running = state.scoring ? scoreAverage(state) : null;
   if (state.lastScore) {
     const { title, singer, average, count } = state.lastScore;
+    const standing = standingsBoard(state).find((row) => row.name === singer);
     return (
       <div className="score-result" aria-live="polite">
         <Trophy size={26} aria-hidden="true" />
         <strong>{average}</strong>
         <span>{title}</span>
         <small>{singer} · {count} คนให้คะแนน</small>
+        {standing && <small className="score-running">รวมทั้งคืน {standing.points} คะแนน จาก {standing.songs} เพลง</small>}
       </div>
     );
   }

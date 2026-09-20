@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  BOMB_SECONDS, createRoomState, hasContent, hasOwnScreens, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
+  createRoomState, hasContent, hasOwnScreens, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
   sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
@@ -246,8 +246,9 @@ export default function RoomClient({
       return;
     }
     lastBombRef.current = picked.id;
-    spotlightUntilRef.current = Date.now() + BOMB_SECONDS * 1000;
-    commit({ kind: "bomb", memberId: picked.id, name: picked.name, seconds: BOMB_SECONDS });
+    const seconds = stateRef.current.bombSeconds;
+    spotlightUntilRef.current = Date.now() + seconds * 1000;
+    commit({ kind: "bomb", memberId: picked.id, name: picked.name, seconds });
     pushToast(`ระเบิดไมค์ลงที่ ${picked.name}`);
   }, [commit, pushToast]);
 
@@ -493,8 +494,11 @@ export default function RoomClient({
         scheduleBroadcast(BROADCAST_DELAY_MS);
         return;
       }
-      pushToast(`หมดเวลาของ ${stateRef.current.spotlight?.name ?? "คนที่ถูกสุ่ม"}`);
-      commit({ kind: "spotlightOff" });
+      const missed = stateRef.current.spotlight?.name;
+      pushToast(stateRef.current.scoring
+        ? `หมดเวลาของ ${missed ?? "คนที่ถูกสุ่ม"} — หัก 1 คะแนน`
+        : `หมดเวลาของ ${missed ?? "คนที่ถูกสุ่ม"}`);
+      commit({ kind: "spotlightOff", missed: true });
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [commit, isHost, pushToast, scheduleBroadcast, state.spotlight]);
