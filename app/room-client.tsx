@@ -276,7 +276,13 @@ export default function RoomClient({
     }
     if (!connectedRef.current) return { ok: false, message: "ยังเชื่อมต่อห้องไม่ได้ รอสักครู่แล้วลองอีกครั้ง" };
     pendingAddsRef.current.add(item.id);
-    broadcastRef.current({ kind: "intent", intent: { kind: "add", item } });
+    // The envelope is how the host knows whose song this is: per-person limits and the mic bomb both read it.
+    broadcastRef.current({
+      kind: "intent",
+      intent: { kind: "add", item },
+      from: selfNameRef.current,
+      fromId: selfIdRef.current ?? undefined,
+    });
     return { ok: true, message: "ส่งแล้ว รอเข้าคิว…" };
   }, [commit, dressItem, realtimeConfigured]);
 
