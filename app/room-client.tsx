@@ -6,7 +6,7 @@ import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
   createRoomState, hasContent, hasOwnScreens, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
-  sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS,
+  sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS, TOURNAMENT_FLASH_MS,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -517,6 +517,13 @@ export default function RoomClient({
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [commit, isHost, pushToast, scheduleBroadcast, state.spotlight]);
+
+  // The tournament's announcement is a moment, not a screen to live on.
+  useEffect(() => {
+    if (!isHost || !state.tournament?.flash) return;
+    const timeoutId = window.setTimeout(() => commit({ kind: "tournamentFlash" }), TOURNAMENT_FLASH_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [commit, isHost, state.tournament?.flash]);
 
   // Everyone looks at the score for a few seconds, then the room moves on.
   useEffect(() => {

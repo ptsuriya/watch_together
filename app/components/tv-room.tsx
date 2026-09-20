@@ -6,7 +6,7 @@ import { formatKey, peekNext, singerOf } from "../../lib/room-state";
 import type { HelperStatus } from "../../lib/karaoke-key";
 import { ChatFlights, type ChatMessage } from "./chat";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
-import { PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentPanel } from "./party";
+import { PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { KeyControl, RoomQr, VocalCutSelect } from "./room-panels";
@@ -101,6 +101,7 @@ export function TvRoom({
         )}
         {state.spotlight && <SpotlightBanner spotlight={state.spotlight} mine={false} place="stage" />}
         <ScoreBoard state={state} />
+        <TournamentFlashCard state={state} />
         <ToastStack toasts={toasts} placement="stage" />
         {karaoke && state.nowPlaying && (
           <p className={`key-badge${state.key !== 0 ? " is-shifted" : ""}`} aria-live="polite">

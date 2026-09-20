@@ -123,6 +123,8 @@ export type ScoreResult = { title: string; singer: string; average: number; coun
  * A knock-out. Everyone still in sings one song a round; when the last of them has sung, the lowest score of that
  * round is out. The last one standing is the champion.
  */
+export type TournamentFlash = { kind: "start" | "out" | "champion"; name: string; left: number };
+
 export type Tournament = {
   round: number;
   /** Still in, in the order they joined. */
@@ -134,8 +136,14 @@ export type Tournament = {
   /** This round's scores, by name. */
   scores: Record<string, number>;
   champion: string | null;
+  /** What the room should be told about, big, for a few seconds. */
+  flash: TournamentFlash | null;
+  /** The crossfade the room had before; a knock-out wants a clean stop between performances. */
+  crossfadeBefore: number;
 };
 export const MAX_PLAYERS = 24;
+/** How long the shared screen holds a tournament announcement. */
+export const TOURNAMENT_FLASH_MS = 9000;
 
 /** One singer's night: the songs they were scored on, and the times the mic bomb ran out on them. */
 export type Standing = { name: string; total: number; songs: number; misses: number };
@@ -208,7 +216,8 @@ export type RoomIntent =
   | { kind: "scoreClear" }
   | { kind: "standingsReset" }
   /** The host starts it with the room's names; anyone managing may call it off. */
-  | { kind: "tournament"; action: "start" | "stop"; players?: string[] };
+  | { kind: "tournament"; action: "start" | "stop"; players?: string[] }
+  | { kind: "tournamentFlash" };
 
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
@@ -404,16 +413,30 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     case "standingsReset":
       return state.standings.length === 0 ? state : { ...state, standings: [], scores: {}, lastScore: null };
     case "tournament": {
-      if (intent.action === "stop") return state.tournament ? { ...state, tournament: null } : state;
+      if (intent.action === "stop") {
+        if (!state.tournament) return state;
+        // Give the room back the crossfade it had before the knock-out asked for clean endings.
+        return { ...state, tournament: null, crossfade: parseCrossfade(state.tournament.crossfadeBefore) };
+      }
       const players = (intent.players ?? []).slice(0, MAX_PLAYERS);
       if (players.length < 2) return state;
-      // A knock-out is decided by the room's scores, so it turns scoring on with it.
+      // A knock-out is decided by the room's scores, so it turns scoring on with it — and songs should end, not
+      // melt into the next singer's, so the crossfade steps aside until it is over.
       return {
         ...state,
         scoring: true,
         scores: {},
-        tournament: { round: 1, players, out: [], done: [], scores: {}, champion: null },
+        crossfade: 0,
+        tournament: {
+          round: 1, players, out: [], done: [], scores: {}, champion: null,
+          flash: { kind: "start", name: "", left: players.length },
+          crossfadeBefore: state.crossfade,
+        },
       };
+    }
+    case "tournamentFlash": {
+      if (!state.tournament?.flash) return state;
+      return { ...state, tournament: { ...state.tournament, flash: null } };
     }
   }
 }
@@ -466,8 +489,17 @@ function playRound(game: Tournament, singer: string, average: number): Tournamen
   const loser = ranked[0];
   const players = game.players.filter((name) => name !== loser);
   const out = [...game.out, loser];
-  if (players.length <= 1) return { ...game, players, out, done: [], scores: {}, champion: players[0] ?? loser };
-  return { ...game, round: game.round + 1, players, out, done: [], scores: {} };
+  if (players.length <= 1) {
+    const champion = players[0] ?? loser;
+    return {
+      ...game, players, out, done: [], scores: {}, champion,
+      flash: { kind: "champion", name: champion, left: 1 },
+    };
+  }
+  return {
+    ...game, round: game.round + 1, players, out, done: [], scores: {},
+    flash: { kind: "out", name: loser, left: players.length },
+  };
 }
 
 /** Who the room is still waiting on this round. */
@@ -617,6 +649,10 @@ function names(value: unknown): string[] {
   return Array.isArray(value) ? value.slice(0, MAX_PLAYERS).flatMap((name) => text(name, 32) || []) : [];
 }
 
+function count(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(999, Math.round(value))) : 0;
+}
+
 function sanitizeTournament(value: unknown): Tournament | null {
   if (!isRecord(value)) return null;
   const players = names(value.players);
@@ -632,6 +668,8 @@ function sanitizeTournament(value: unknown): Tournament | null {
     }
   }
   const round = typeof value.round === "number" && Number.isFinite(value.round) ? Math.max(1, Math.round(value.round)) : 1;
+  const flash = isRecord(value.flash) ? value.flash : null;
+  const kind = flash && (flash.kind === "start" || flash.kind === "out" || flash.kind === "champion") ? flash.kind : null;
   return {
     round: Math.min(round, 99),
     players,
@@ -639,6 +677,8 @@ function sanitizeTournament(value: unknown): Tournament | null {
     done: names(value.done).filter((name) => players.includes(name)),
     scores,
     champion: champion || null,
+    flash: kind && flash ? { kind, name: text(flash.name, 32), left: count(flash.left) } : null,
+    crossfadeBefore: parseCrossfade(value.crossfadeBefore),
   };
 }
 

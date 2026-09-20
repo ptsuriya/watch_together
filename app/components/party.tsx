@@ -140,7 +140,10 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
               <button type="button" className="btn btn-honey" onClick={() => dispatch({ kind: "tournament", action: "start" })}>
                 <Swords size={18} aria-hidden="true" /> เริ่มทัวร์นาเมนต์
               </button>
-              <small>ทุกคนในห้องร้องรอบละ 1 เพลง จบรอบคนคะแนนน้อยสุดตกรอบ จนเหลือคนเดียว (เปิดให้คะแนนอัตโนมัติ)</small>
+              <small>
+                ทุกคนในห้องร้องรอบละ 1 เพลง จบรอบคนคะแนนน้อยสุดตกรอบ จนเหลือคนเดียว — เปิดให้คะแนนอัตโนมัติ
+                และปิดครอสเฟดไว้ให้ด้วย เพลงจะได้จบเป็นเพลงๆ ไม่ทับกัน (จบทัวร์นาเมนต์แล้วครอสเฟดกลับมาเหมือนเดิม)
+              </small>
             </>
           )}
         </div>
@@ -281,6 +284,27 @@ export function ScoreBoard({ state }: { state: RoomState }) {
     <p className="score-live" aria-live="polite">
       <Star size={16} fill="currentColor" aria-hidden="true" /> {running.average} <small>({running.count} คน)</small>
     </p>
+  );
+}
+
+/** The moment itself, big enough to look up at: the knock-out starting, someone going out, or a champion. */
+export function TournamentFlashCard({ state }: { state: RoomState }) {
+  const flash = state.tournament?.flash;
+  if (!flash) return null;
+  const copy = {
+    start: { title: "ทัวร์นาเมนต์เริ่มแล้ว", line: `${flash.left} คน ร้องคนละ 1 เพลงต่อรอบ`, icon: <Swords size={30} aria-hidden="true" /> },
+    out: { title: `${flash.name} ตกรอบ`, line: `เหลืออีก ${flash.left} คน`, icon: <Medal size={30} aria-hidden="true" /> },
+    champion: { title: `${flash.name} คือแชมป์!`, line: "จบทัวร์นาเมนต์คืนนี้", icon: <Crown size={30} aria-hidden="true" /> },
+  }[flash.kind];
+  return (
+    <div className={`tournament-flash is-${flash.kind}`} role="status">
+      {copy.icon}
+      <strong>{copy.title}</strong>
+      <span>{copy.line}</span>
+      {state.tournament && state.tournament.players.length > 0 && (
+        <small>ยังอยู่: {state.tournament.players.join(", ")}</small>
+      )}
+    </div>
   );
 }
 
