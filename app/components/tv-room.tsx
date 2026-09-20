@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Minimize2, QrCode } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { formatKey, peekNext, singerOf } from "../../lib/room-state";
 import type { HelperStatus } from "../../lib/karaoke-key";
 import { ChatFlights, type ChatMessage } from "./chat";
@@ -13,6 +14,31 @@ import type { RoomModel, Toast } from "./room-model";
 import { Art, ToastStack } from "./ui";
 
 const UP_NEXT_LIMIT = 4;
+const QR_KEY = "sidewave-tv-qr";
+
+/** Once everyone has scanned, the QR is just furniture — this screen remembers how the room left it. */
+function useQrOpen() {
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      try {
+        if (window.localStorage.getItem(QR_KEY) === "small") setOpen(false);
+      } catch {
+        // Showing the QR is the safe default.
+      }
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+  const change = (next: boolean) => {
+    setOpen(next);
+    try {
+      window.localStorage.setItem(QR_KEY, next ? "big" : "small");
+    } catch {
+      // Remembering it is a convenience only.
+    }
+  };
+  return { open, change };
+}
 
 /**
  * Remote and karaoke, host side: this screen is the shared TV (or the shared screen in a call). The video gets the
@@ -45,6 +71,7 @@ export function TvRoom({
 }) {
   const { state, canManage, dispatch, selfId, selfName, inviteUrl, roomCode } = model;
   const upNext = peekNext(state);
+  const qr = useQrOpen();
   const karaoke = state.mode === "karaoke";
   const scanText = karaoke ? "สแกนเพื่อขอเพลงและปรับคีย์" : "สแกนเพื่อเพิ่มเพลง";
 
@@ -89,14 +116,25 @@ export function TvRoom({
       <aside className="tv-side" aria-label="คิวและการควบคุม">
         {state.nowPlaying && (
           // While the queue is empty the stage itself shows a large QR.
-          <section className="card qr-card">
-            <Art name="star" className="qr-sticker" sizes="56px" />
-            <RoomQr url={inviteUrl} size={176} />
-            <div className="qr-copy">
-              <strong>{scanText}</strong>
-              <span>รหัส {roomCode}</span>
-            </div>
-          </section>
+          qr.open ? (
+            <section className="card qr-card">
+              <Art name="star" className="qr-sticker" sizes="56px" />
+              <button type="button" className="icon-btn qr-fold" onClick={() => qr.change(false)} aria-label="ย่อ QR" title="ย่อ QR">
+                <Minimize2 size={16} aria-hidden="true" />
+              </button>
+              <RoomQr url={inviteUrl} size={176} />
+              <div className="qr-copy">
+                <strong>{scanText}</strong>
+                <span>รหัส {roomCode}</span>
+              </div>
+            </section>
+          ) : (
+            <button type="button" className="card qr-card is-small" onClick={() => qr.change(true)}>
+              <QrCode size={20} aria-hidden="true" />
+              <span>เข้าห้องด้วยรหัส <strong>{roomCode}</strong></span>
+              <em>กดเพื่อกาง QR</em>
+            </button>
+          )
         )}
 
         <section className="card side-now">
