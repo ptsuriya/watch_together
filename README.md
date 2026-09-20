@@ -45,7 +45,7 @@ Every mode keeps two YouTube players. When a song is within the crossfade of its
 
 ## Emoji bomb and flying messages
 
-Every mode has an emoji pad: a tap broadcasts one `react` event and each screen throws a burst of that emoji, with the sender's name underneath. Ten emoji come with the room and everyone may add one of their own, kept on their device; anything that is a single emoji is accepted.
+Every mode has an emoji pad: a tap broadcasts one `react` event and each screen throws a burst of that emoji, with the sender's name underneath. Each emoji has its own temper — cheering (🔥 🎉 💯) shoots up fast and scatters wide, affection (❤️ 🍯 🐻) drifts — and a burst spreads over about a third of the screen's height. Ten emoji come with the room and everyone may add one of their own, kept on their device; anything that is a single emoji is accepted.
 
 Messages fly across the screen the way comments do on Chinese streaming sites. On a shared TV (remote and karaoke) they cross the video itself; in watch mode they cross the whole page instead, picking heights that miss the player, so nobody's picture is covered. Emoji do the same: they rise across the page and stop below the player. The host switches messages off with **ข้อความวิ่ง** next to the queue, they are capped at 80 characters, and each person waits 1.5 s between them. Phones keep the last few in a list.
 

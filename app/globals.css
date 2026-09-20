@@ -645,8 +645,7 @@ select.field { padding-right: 8px; }
 /* ---------- Emoji bomb ---------- */
 
 .emoji-rain { position: absolute; inset: 0; z-index: 5; overflow: hidden; pointer-events: none; }
-.emoji-rain-stage { --emoji-rise: -78vh; }
-.emoji-rain-page { position: fixed; z-index: 34; --emoji-rise: -40vh; }
+.emoji-rain-page { position: fixed; z-index: 34; }
 .emoji-rain-page .emoji-from { bottom: 8px; font-size: 16px; }
 .emoji-particle {
   position: absolute; bottom: -8%; line-height: 1;
@@ -879,7 +878,7 @@ select.field { padding-right: 8px; }
 @keyframes emoji-fly {
   0% { opacity: 0; translate: 0 0; scale: 0.6; }
   12% { opacity: 1; scale: 1; }
-  100% { opacity: 0; translate: var(--drift, 0) var(--emoji-rise, -78vh); rotate: var(--spin, 0deg); }
+  100% { opacity: 0; translate: var(--drift, 0) var(--emoji-rise, -30dvh); rotate: var(--spin, 0deg); }
 }
 @keyframes emoji-name {
   0% { opacity: 0; translate: -50% 12px; }

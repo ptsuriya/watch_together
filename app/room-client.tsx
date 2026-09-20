@@ -135,7 +135,9 @@ export default function RoomClient({
     burstIdRef.current += 1;
     // Watch mode: emoji rise across the page but stop below the player instead of flying over it.
     const player = stateRef.current.mode === "watch" ? document.querySelector(".player-card")?.getBoundingClientRect() : null;
-    const rise = player ? -Math.max(140, Math.round(window.innerHeight - player.bottom - 16)) : undefined;
+    // Bursts are about a third of the window tall, and never taller than the room left under the player.
+    const room = player ? Math.max(140, Math.round(window.innerHeight - player.bottom - 16)) : window.innerHeight;
+    const rise = -Math.min(Math.round(window.innerHeight * 0.3), room);
     const burst = makeBurst(burstIdRef.current, emoji, from, rise);
     setBursts((current) => [...current.slice(-(MAX_BURSTS - 1)), burst]);
     window.setTimeout(() => setBursts((current) => current.filter((item) => item.id !== burst.id)), BURST_LIFETIME_MS);

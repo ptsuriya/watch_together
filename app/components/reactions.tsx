@@ -5,11 +5,14 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { REACTIONS, sanitizeReaction } from "../../lib/room-state";
 import { Dialog } from "./ui";
 
-export type EmojiParticle = { x: number; delay: number; duration: number; size: number; drift: number; spin: number };
+export type EmojiParticle = {
+  x: number; delay: number; duration: number; size: number; drift: number; spin: number;
+  /** How far up this one goes, as a share of the burst's height. */
+  rise: number;
+};
 export type EmojiBurst = { id: number; emoji: string; from: string; particles: EmojiParticle[]; rise?: number };
 
-const PARTICLES_PER_BURST = 9;
-export const BURST_LIFETIME_MS = 4200;
+export const BURST_LIFETIME_MS = 4600;
 const CUSTOM_EMOJI_KEY = "kuma-custom-emoji";
 
 /** A few more to tap, for people whose keyboard makes emoji hard to reach. */
@@ -19,16 +22,46 @@ const EXTRA_EMOJI = [
   "⭐", "✨", "💖", "🫶", "🙏", "👑", "🚀", "🐱",
 ];
 
+type Mood = {
+  count: number;
+  duration: [number, number];
+  delay: number;
+  drift: number;
+  spin: number;
+  size: [number, number];
+};
+
+/** How tall a burst is by default; particles scatter within it. */
+export const BURST_HEIGHT_DVH = 30;
+
+/** Cheering shoots up fast and scatters wide; affection drifts up slowly. */
+const MOODS: Record<"fast" | "normal" | "slow", Mood> = {
+  fast: { count: 14, duration: [0.9, 1.6], delay: 0.35, drift: 320, spin: 140, size: [4, 9] },
+  normal: { count: 10, duration: [1.5, 2.4], delay: 0.6, drift: 230, spin: 70, size: [4.5, 9] },
+  slow: { count: 7, duration: [2.6, 4], delay: 1, drift: 120, spin: 24, size: [5.5, 10] },
+};
+
+const EMOJI_MOOD: Record<string, keyof typeof MOODS> = {
+  "🔥": "fast", "💯": "fast", "🎉": "fast", "👏": "fast", "😂": "fast", "🤣": "fast", "🚀": "fast",
+  "🥁": "fast", "🎸": "fast", "⭐": "fast", "✨": "fast", "🍻": "fast",
+  "❤️": "slow", "🍯": "slow", "🐻": "slow", "😍": "slow", "🥰": "slow", "😴": "slow", "🥹": "slow",
+  "🙏": "slow", "💖": "slow", "🫶": "slow", "🙈": "slow", "🐱": "slow",
+};
+
+const between = ([low, high]: [number, number]) => low + Math.random() * (high - low);
+
 /** Random flight paths, made once when the burst arrives so re-renders do not reshuffle them. */
 export function makeBurst(id: number, emoji: string, from: string, rise?: number): EmojiBurst {
-  const particles = Array.from({ length: PARTICLES_PER_BURST }, () => ({
-    x: 4 + Math.random() * 92,
-    delay: Math.random() * 0.5,
-    duration: 2.4 + Math.random() * 1.2,
+  const mood = MOODS[EMOJI_MOOD[emoji] ?? "normal"];
+  const particles = Array.from({ length: mood.count }, () => ({
+    x: 2 + Math.random() * 96,
+    delay: Math.random() * mood.delay,
+    duration: between(mood.duration),
     // Sized against the screen, so a burst reads from across the room on a TV.
-    size: 5 + Math.random() * 4,
-    drift: Math.round((Math.random() - 0.5) * 220),
-    spin: Math.round((Math.random() - 0.5) * 60),
+    size: between(mood.size),
+    drift: Math.round((Math.random() - 0.5) * mood.drift),
+    spin: Math.round((Math.random() - 0.5) * mood.spin),
+    rise: 0.45 + Math.random() * 0.75,
   }));
   return { id, emoji, from, particles, rise };
 }
@@ -42,7 +75,7 @@ export function EmojiRain({ bursts, variant = "stage" }: { bursts: EmojiBurst[];
   return (
     <div className={`emoji-rain emoji-rain-${variant}`} aria-hidden="true">
       {bursts.map((burst) => (
-        <div key={burst.id} style={burst.rise ? ({ "--emoji-rise": `${burst.rise}px` } as CSSProperties) : undefined}>
+        <div key={burst.id}>
           {burst.particles.map((particle, index) => (
             <span
               key={index}
@@ -54,6 +87,9 @@ export function EmojiRain({ bursts, variant = "stage" }: { bursts: EmojiBurst[];
                 animationDuration: `${particle.duration}s`,
                 "--drift": `${particle.drift}px`,
                 "--spin": `${particle.spin}deg`,
+                "--emoji-rise": variant === "stage"
+                  ? `-${(BURST_HEIGHT_DVH * particle.rise).toFixed(1)}dvh`
+                  : `${Math.round((burst.rise ?? -260) * particle.rise)}px`,
               } as CSSProperties}
             >
               {burst.emoji}
