@@ -6,7 +6,7 @@ import type { HelperStatus } from "../../lib/karaoke-key";
 import { mayChangeKey, singerOf } from "../../lib/room-state";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { ChatBar, type ChatMessage } from "./chat";
-import { PartyButton, ScorePad, SpotlightBanner } from "./party";
+import { PartyButton, ScorePad, SpotlightBanner, TournamentPanel } from "./party";
 import { SyncOffsetControl } from "./sync-offset";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
@@ -121,6 +121,7 @@ export function WatchRoom({
           <h2 id="queue-title">คิวต่อไป <span className="count">{state.queue.length}</span></h2>
           {canManage && <PartyButton state={state} onOpen={onOpenParty} />}
         </div>
+        {state.tournament && <TournamentPanel state={state} selfName={selfName} />}
         <ScorePad state={state} selfId={selfId} dispatch={dispatch} />
         <AddVideoForm onAdd={model.addVideo} />
         <QueueList

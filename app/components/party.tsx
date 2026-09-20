@@ -1,9 +1,10 @@
 "use client";
 
-import { Bomb, Dices, ListOrdered, Medal, SlidersHorizontal, Star, ThumbsUp, Timer, Trash2, Trophy } from "lucide-react";
+import { Bomb, Crown, Dices, ListOrdered, Medal, SlidersHorizontal, Star, Swords, ThumbsUp, Timer, Trash2, Trophy } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
   BOMB_SECOND_OPTIONS, isKaraoke, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, scoreAverage, SCORE_MAX, standingsBoard,
+  waitingOn,
   type PartyGame, type QueueItem, type QueueOrder, type RoomIntent, type RoomState, type Spotlight,
 } from "../../lib/room-state";
 import type { RoomModel } from "./room-model";
@@ -122,6 +123,25 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           <span><Star size={16} aria-hidden="true" /> ให้คะแนนเพลงที่กำลังเล่น</span>
           <small>ทุกคนให้ดาวได้คนละครั้ง คะแนนของแต่ละเพลงสะสมเป็นตารางทั้งคืน และปล่อยให้ระเบิดไมค์หมดเวลาจะโดนหัก 1 คะแนน</small>
         </label>
+
+        <div className="party-row">
+          <span className="party-row-title"><Swords size={16} aria-hidden="true" /> ทัวร์นาเมนต์</span>
+          {state.tournament ? (
+            <>
+              <TournamentPanel state={state} />
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "tournament", action: "stop" })}>
+                จบทัวร์นาเมนต์
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn btn-honey" onClick={() => dispatch({ kind: "tournament", action: "start" })}>
+                <Swords size={18} aria-hidden="true" /> เริ่มทัวร์นาเมนต์
+              </button>
+              <small>ทุกคนในห้องร้องรอบละ 1 เพลง จบรอบคนคะแนนน้อยสุดตกรอบ จนเหลือคนเดียว (เปิดให้คะแนนอัตโนมัติ)</small>
+            </>
+          )}
+        </div>
 
         {state.standings.length > 0 && (
           <div className="party-row">
@@ -258,6 +278,41 @@ export function ScoreBoard({ state }: { state: RoomState }) {
     <p className="score-live" aria-live="polite">
       <Star size={16} fill="currentColor" aria-hidden="true" /> {running.average} <small>({running.count} คน)</small>
     </p>
+  );
+}
+
+/** The knock-out as the room sees it: the round, who still owes a song, and who has gone home. */
+export function TournamentPanel({ state, selfName, compact = false }: {
+  state: RoomState;
+  selfName?: string;
+  compact?: boolean;
+}) {
+  const game = state.tournament;
+  if (!game) return null;
+  if (game.champion) {
+    return (
+      <div className="tournament is-champion" aria-live="polite">
+        <Crown size={compact ? 20 : 26} aria-hidden="true" />
+        <div>
+          <strong>{game.champion}</strong>
+          <small>ชนะทัวร์นาเมนต์คืนนี้</small>
+        </div>
+      </div>
+    );
+  }
+  const waiting = waitingOn(game);
+  const mine = selfName && waiting.includes(selfName);
+  return (
+    <div className={`tournament${mine ? " is-mine" : ""}`} aria-live="polite">
+      <p className="tournament-head">
+        <Swords size={16} aria-hidden="true" /> ทัวร์นาเมนต์ รอบ {game.round}
+        <em>เหลือ {game.players.length} คน</em>
+      </p>
+      <p className="tournament-line">
+        {mine ? "ถึงตาคุณแล้ว ขอเพลงของคุณได้เลย" : waiting.length > 0 ? `รออยู่: ${waiting.join(", ")}` : "รอบนี้ร้องครบแล้ว"}
+      </p>
+      {game.out.length > 0 && <p className="tournament-out">ตกรอบ: {game.out.join(", ")}</p>}
+    </div>
   );
 }
 

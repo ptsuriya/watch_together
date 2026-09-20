@@ -83,6 +83,8 @@ export type RoomState = {
   lastScore: ScoreResult | null;
   /** Every song's average, kept per singer, so the night has a running table. */
   standings: Standing[];
+  /** A knock-out running in the room: one song each per round, lowest score goes home. */
+  tournament: Tournament | null;
   /**
    * Seconds the host's own screen runs ahead of the room. The host's ears can be late — Bluetooth headphones, a
    * soundbar — and only the other screens can move to meet them, so this travels with the room.
@@ -115,6 +117,24 @@ export const SCORE_SHOW_MS = 12_000;
 
 export type Spotlight = { memberId: string; name: string; seconds: number };
 export type ScoreResult = { title: string; singer: string; average: number; count: number };
+/**
+ * A knock-out. Everyone still in sings one song a round; when the last of them has sung, the lowest score of that
+ * round is out. The last one standing is the champion.
+ */
+export type Tournament = {
+  round: number;
+  /** Still in, in the order they joined. */
+  players: string[];
+  /** Knocked out, earliest first. */
+  out: string[];
+  /** Who has already sung this round. */
+  done: string[];
+  /** This round's scores, by name. */
+  scores: Record<string, number>;
+  champion: string | null;
+};
+export const MAX_PLAYERS = 24;
+
 /** One singer's night: the songs they were scored on, and the times the mic bomb ran out on them. */
 export type Standing = { name: string; total: number; songs: number; misses: number };
 export const MAX_STANDINGS = 40;
@@ -183,12 +203,14 @@ export type RoomIntent =
   /** missed: the countdown ran out with no song, which costs that person a point. */
   | { kind: "spotlightOff"; missed?: boolean }
   | { kind: "scoreClear" }
-  | { kind: "standingsReset" };
+  | { kind: "standingsReset" }
+  /** The host starts it with the room's names; anyone managing may call it off. */
+  | { kind: "tournament"; action: "start" | "stop"; players?: string[] };
 
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
-  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset",
+  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -196,7 +218,7 @@ export type GuestIntent = Extract<
   RoomIntent,
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
-    | "bomb" | "standingsReset" }
+    | "bomb" | "standingsReset" | "tournament" }
 >;
 
 export type RoomEvent =
@@ -229,7 +251,7 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
     notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
     cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
-    standings: [], hostOffset: 0,
+    standings: [], tournament: null, hostOffset: 0,
   };
 }
 
@@ -371,6 +393,18 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return state.lastScore ? { ...state, lastScore: null } : state;
     case "standingsReset":
       return state.standings.length === 0 ? state : { ...state, standings: [], scores: {}, lastScore: null };
+    case "tournament": {
+      if (intent.action === "stop") return state.tournament ? { ...state, tournament: null } : state;
+      const players = (intent.players ?? []).slice(0, MAX_PLAYERS);
+      if (players.length < 2) return state;
+      // A knock-out is decided by the room's scores, so it turns scoring on with it.
+      return {
+        ...state,
+        scoring: true,
+        scores: {},
+        tournament: { round: 1, players, out: [], done: [], scores: {}, champion: null },
+      };
+    }
   }
 }
 
@@ -395,10 +429,10 @@ function pickNext(state: RoomState): [QueueItem | null, QueueItem[]] {
 }
 
 /** The song is over: turn the scores people sent into the card the room sees, and start the next one clean. */
-function closeScores(state: RoomState): Pick<RoomState, "scores" | "lastScore" | "standings"> {
+function closeScores(state: RoomState): Pick<RoomState, "scores" | "lastScore" | "standings" | "tournament"> {
   const values = Object.values(state.scores);
   if (!state.scoring || !state.nowPlaying || values.length === 0) {
-    return { scores: {}, lastScore: null, standings: state.standings };
+    return { scores: {}, lastScore: null, standings: state.standings, tournament: state.tournament };
   }
   const total = values.reduce((sum, value) => sum + value, 0);
   const average = Math.round((total / values.length) * 10) / 10;
@@ -408,7 +442,27 @@ function closeScores(state: RoomState): Pick<RoomState, "scores" | "lastScore" |
     scores: {},
     lastScore: { title: state.nowPlaying.title, singer, average, count: values.length },
     standings,
+    tournament: state.tournament ? playRound(state.tournament, singer, average) : null,
   };
+}
+
+/** Records this singer's round, and when the last player has sung, sends the lowest score home. */
+function playRound(game: Tournament, singer: string, average: number): Tournament {
+  if (game.champion || !game.players.includes(singer) || game.done.includes(singer)) return game;
+  const done = [...game.done, singer];
+  const scores = { ...game.scores, [singer]: average };
+  if (done.length < game.players.length) return { ...game, done, scores };
+  const ranked = [...game.players].sort((a, b) => (scores[a] ?? 0) - (scores[b] ?? 0));
+  const loser = ranked[0];
+  const players = game.players.filter((name) => name !== loser);
+  const out = [...game.out, loser];
+  if (players.length <= 1) return { ...game, players, out, done: [], scores: {}, champion: players[0] ?? loser };
+  return { ...game, round: game.round + 1, players, out, done: [], scores: {} };
+}
+
+/** Who the room is still waiting on this round. */
+export function waitingOn(game: Tournament) {
+  return game.players.filter((name) => !game.done.includes(name));
 }
 
 /** The running average of the song playing now, or null while nobody has rated it. */
@@ -521,6 +575,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     scores: sanitizeScores(value.scores),
     lastScore: sanitizeScoreResult(value.lastScore),
     standings: Array.isArray(value.standings) ? sanitizeStandings(value.standings) : [],
+    tournament: sanitizeTournament(value.tournament),
     hostOffset: clampOffset(value.hostOffset),
   };
 }
@@ -545,6 +600,35 @@ function sanitizeScores(value: unknown): Record<string, number> {
     scores[memberId] = Math.max(1, Math.min(SCORE_MAX, Math.round(score)));
   }
   return scores;
+}
+
+function names(value: unknown): string[] {
+  return Array.isArray(value) ? value.slice(0, MAX_PLAYERS).flatMap((name) => text(name, 32) || []) : [];
+}
+
+function sanitizeTournament(value: unknown): Tournament | null {
+  if (!isRecord(value)) return null;
+  const players = names(value.players);
+  const out = names(value.out);
+  const champion = text(value.champion, 32);
+  if (players.length === 0 && !champion) return null;
+  const scores: Record<string, number> = {};
+  if (isRecord(value.scores)) {
+    for (const [name, score] of Object.entries(value.scores).slice(0, MAX_PLAYERS)) {
+      if (name.length <= 32 && typeof score === "number" && Number.isFinite(score)) {
+        scores[name] = Math.max(0, Math.min(SCORE_MAX, Math.round(score * 10) / 10));
+      }
+    }
+  }
+  const round = typeof value.round === "number" && Number.isFinite(value.round) ? Math.max(1, Math.round(value.round)) : 1;
+  return {
+    round: Math.min(round, 99),
+    players,
+    out,
+    done: names(value.done).filter((name) => players.includes(name)),
+    scores,
+    champion: champion || null,
+  };
 }
 
 function sanitizeStandings(value: unknown[]): Standing[] {
@@ -636,6 +720,11 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
       return { kind: "bomb" };
     case "standingsReset":
       return { kind: "standingsReset" };
+    case "tournament": {
+      // Who is playing comes from the host's own member list, never from the sender.
+      const action = value.action === "start" ? "start" : value.action === "stop" ? "stop" : null;
+      return action ? { kind: "tournament", action } : null;
+    }
     default:
       return null;
   }

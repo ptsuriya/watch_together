@@ -1005,7 +1005,22 @@ select.field { padding-right: 8px; }
 }
 .score-star.is-on { background: var(--gold); }
 
-.side-board { display: grid; gap: 10px; padding: 16px; }
+.tournament {
+  display: grid; gap: 4px; padding: 10px 14px;
+  border: 2px solid var(--bark); border-radius: 16px; background: var(--white); color: var(--bark);
+}
+.tournament.is-mine { background: var(--gold); }
+.tournament-head { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 800; }
+.tournament-head em { margin-left: auto; color: var(--clay); font-size: 13px; font-style: normal; font-weight: 600; }
+.tournament-line { font-size: 14px; }
+.tournament-out { color: var(--clay); font-size: 13px; }
+.tournament.is-champion {
+  display: flex; align-items: center; gap: 12px; background: var(--honey); box-shadow: var(--shadow-sm);
+}
+.tournament.is-champion strong { display: block; font-size: 18px; font-weight: 800; }
+.tournament.is-champion small { color: var(--clay); }
+
+.remote-tournament, .side-board { display: grid; gap: 10px; padding: 16px; }
 .side-board h2 { color: var(--bark); font-size: 16px; font-weight: 800; }
 
 .score-table { display: grid; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }

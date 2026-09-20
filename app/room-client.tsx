@@ -105,8 +105,9 @@ export default function RoomClient({
   /** Host clock: when the mic bomb runs out. The state carries only the seconds left, so every screen agrees. */
   const spotlightUntilRef = useRef(0);
   const lastBombRef = useRef<string | null>(null);
-  /** Set once the picker below exists; dispatch is defined before it. */
+  /** Set once the pickers below exist; dispatch is defined before them. */
   const startBombRef = useRef<() => void>(() => undefined);
+  const playerNamesRef = useRef<() => string[]>(() => []);
   const supabaseConfig = useMemo(() => ({ url: supabaseUrl, key: supabaseKey }), [supabaseKey, supabaseUrl]);
   const realtimeConfigured = isSupabaseConfigured(supabaseConfig);
 
@@ -177,7 +178,9 @@ export default function RoomClient({
     if (isHostRef.current || !realtimeConfigured) {
       // The room, not the sender, decides who the mic lands on and whose vote this is.
       if (intent.kind === "bomb") startBombRef.current();
-      else if (intent.kind === "vote" || intent.kind === "score") commit({ ...intent, memberId: selfIdRef.current ?? "host" });
+      else if (intent.kind === "tournament" && intent.action === "start") {
+        commit({ kind: "tournament", action: "start", players: playerNamesRef.current() });
+      } else if (intent.kind === "vote" || intent.kind === "score") commit({ ...intent, memberId: selfIdRef.current ?? "host" });
       else commit(intent);
       return;
     }
@@ -236,6 +239,12 @@ export default function RoomClient({
     return { ...item, ...(fromId ? { addedById: fromId } : {}), ...(singer ? { singer } : {}) };
   }, [pickSinger]);
 
+  /** Everyone in the room, by the name their songs are credited to. */
+  const playerNames = useCallback(() => {
+    const seen = new Set<string>();
+    return membersRef.current.flatMap((member) => (seen.has(member.name) ? [] : (seen.add(member.name), [member.name])));
+  }, []);
+
   /** Hands the mic to someone at random, with a countdown to find one song. */
   const startBomb = useCallback(() => {
     const room = membersRef.current;
@@ -254,7 +263,8 @@ export default function RoomClient({
 
   useEffect(() => {
     startBombRef.current = startBomb;
-  }, [startBomb]);
+    playerNamesRef.current = playerNames;
+  }, [playerNames, startBomb]);
 
   const addVideo = useCallback(async (input: string): Promise<AddVideoResult> => {
     const videoId = parseYouTubeId(input);
@@ -321,6 +331,10 @@ export default function RoomClient({
         if (intent.kind === "key" && !manager && !mayChangeKey(state, fromName)) return;
         if (intent.kind === "bomb") {
           startBomb();
+          return;
+        }
+        if (intent.kind === "tournament" && intent.action === "start") {
+          commit({ kind: "tournament", action: "start", players: playerNames() });
           return;
         }
         // Voting and rating only count when the room knows who sent them.
@@ -393,7 +407,7 @@ export default function RoomClient({
         return;
       }
     }
-  }, [broadcastStateNow, commit, confirmPendingAdds, dressItem, pushBurst, pushMessage, pushToast, replaceState, startBomb]);
+  }, [broadcastStateNow, commit, confirmPendingAdds, dressItem, playerNames, pushBurst, pushMessage, pushToast, replaceState, startBomb]);
 
   const handleResync = useCallback(({ isHost: selfIsHost }: RoomSelf) => {
     if (!selfIsHost) broadcastRef.current({ kind: "state:request" });
