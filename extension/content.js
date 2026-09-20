@@ -9,9 +9,11 @@
 //   embed -> room: { source: "kuma-karaoke-key", type: "ready" | "status" | "error" | "probe", ... }
 //
 // Vocal removal is the old karaoke trick: most singers are mixed dead centre, so L−R cancels them — along with
-// anything else in the middle, which is why the room can ask for half of it instead of all of it. The bass and the
-// kick live down there too, so below the crossover the untouched mono mix is used instead: voices are rarely under
-// 180 Hz, but a kick drum always is. A three-band EQ sits at the end for whatever the room still wants to fix.
+// anything else in the middle, which is why the room can ask for half of it instead of all of it. Only the band a
+// voice actually lives in is cancelled: under 180 Hz the untouched mix comes through, so the kick and the bass stay,
+// and above 5.5 kHz it comes through too, so hats, cymbals and the crack of a clap stay. What a clap or a snare has
+// inside the vocal band still goes with the voice — that part is the trick, not a bug. A three-band EQ sits at the
+// end for whatever the room still wants to fix.
 //
 // The audio only goes through Web Audio once a key or a vocal cut is asked for; until then YouTube plays it untouched,
 // and YouTube's own ads always play untouched: the pitch shift steps aside while an ad is on screen.
@@ -24,7 +26,9 @@
   const KEY_RANGE = 12;
   const RESUME_TIMEOUT_MS = 1500;
   /** Voices rarely live below this; kick drums always do. */
-  const CROSSOVER_HZ = 180;
+  const LOW_CROSSOVER_HZ = 180;
+  /** Above this it is hats, cymbals and the snap of a clap — and only the hiss of a voice. */
+  const HIGH_CROSSOVER_HZ = 5500;
   const EQ_RANGE_DB = 8;
 
   let semitones = 0;
@@ -100,14 +104,21 @@
     const side = context.createGain();
     // L − R is quieter than the mix it came from on most songs; bring it back up a little.
     side.gain.value = 1.4;
-    // Everything the cancellation would hollow out — kick, bass, floor tom — comes back from the untouched mix.
+    // The cancellation is kept to the band a voice sings in.
     const sideHigh = context.createBiquadFilter();
     sideHigh.type = "highpass";
-    sideHigh.frequency.value = CROSSOVER_HZ;
-    const bass = context.createGain();
-    const bassLow = context.createBiquadFilter();
-    bassLow.type = "lowpass";
-    bassLow.frequency.value = CROSSOVER_HZ;
+    sideHigh.frequency.value = LOW_CROSSOVER_HZ;
+    const sideLow = context.createBiquadFilter();
+    sideLow.type = "lowpass";
+    sideLow.frequency.value = HIGH_CROSSOVER_HZ;
+    // Everything outside that band comes back from the untouched mix: kick and bass below, hats and air above.
+    const keep = context.createGain();
+    const keepLow = context.createBiquadFilter();
+    keepLow.type = "lowpass";
+    keepLow.frequency.value = LOW_CROSSOVER_HZ;
+    const keepHigh = context.createBiquadFilter();
+    keepHigh.type = "highpass";
+    keepHigh.frequency.value = HIGH_CROSSOVER_HZ;
     const dry = context.createGain();
     const out = context.createGain();
     // Wired once and left alone; only what goes in and what comes out changes.
@@ -115,11 +126,14 @@
     splitter.connect(invert, 1);
     invert.connect(side);
     side.connect(sideHigh);
-    sideHigh.connect(out);
-    bass.connect(bassLow);
-    bassLow.connect(out);
+    sideHigh.connect(sideLow);
+    sideLow.connect(out);
+    keep.connect(keepLow);
+    keep.connect(keepHigh);
+    keepLow.connect(out);
+    keepHigh.connect(out);
     dry.connect(out);
-    return { splitter, dry, side, bass, out };
+    return { splitter, dry, side, keep, out };
   }
 
   /** Three plain bands at the end of the chain, so a thin karaoke mix can be pushed back into shape. */
@@ -176,9 +190,9 @@
     if (cutting) {
       killer.dry.gain.value = 1 - vocalCut;
       killer.side.gain.value = 1.4 * vocalCut;
-      killer.bass.gain.value = vocalCut;
+      killer.keep.gain.value = vocalCut;
       source.connect(killer.splitter);
-      source.connect(killer.bass);
+      source.connect(killer.keep);
       source.connect(killer.dry);
       node = killer.out;
     }
