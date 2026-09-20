@@ -3,6 +3,7 @@
 import { Check, Copy, Download, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { HELPER_PROBE_URL, HELPER_STORE_URL, HELPER_ZIP_URL, type HelperStatus } from "../../lib/karaoke-key";
+import { Art } from "./ui";
 
 const EXTENSIONS_PAGE = "chrome://extensions";
 
@@ -56,6 +57,7 @@ export function KeyHelperCard({ status }: { status: HelperStatus }) {
 
   return (
     <div className="helper-install">
+      <Art name="karaokeKey" className="helper-icon" sizes="64px" />
       <strong>ติดตั้งส่วนเสริมเปลี่ยนคีย์ (ทำครั้งเดียว)</strong>
       <p>เครื่องนี้เป็นจอกลาง ต้องมีส่วนเสริมเพื่อให้ปุ่มคีย์บนมือถือเปลี่ยนเสียงเพลงได้จริง</p>
       {HELPER_STORE_URL ? (

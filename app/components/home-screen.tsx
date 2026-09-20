@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, Check, Mic, MonitorPlay, Music2, QrCode, Star, Tv, UserX } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { ROOM_MODES, type RoomMode } from "../../lib/room-state";
 import { MODE_LABELS } from "./room-model";
@@ -197,6 +198,8 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
             <strong>KUMA Listening Party</strong>
             <p>
               <UserX size={16} aria-hidden="true" /> ห้องอยู่ตราบที่โฮสต์ยังเปิดหน้าไว้ ไม่เก็บประวัติการดูและไม่ต้องใช้บัญชี
+              {" · "}
+              <Link href="/privacy" className="footer-link">ความเป็นส่วนตัว</Link>
             </p>
           </div>
           <Art name="pudding" className="footer-sticker" sizes="56px" />

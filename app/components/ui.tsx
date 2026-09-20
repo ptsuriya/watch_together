@@ -37,6 +37,7 @@ const ART = {
   board: { src: "/illustrations/page-services.webp", width: 677, height: 900 },
   clipboard: { src: "/illustrations/process-1-brief.webp", width: 900, height: 870 },
   notebook: { src: "/illustrations/process-2-design.webp", width: 865, height: 900 },
+  karaokeKey: { src: "/brand/kuma-karaoke-key-mark.png", width: 1024, height: 1024 },
   boba: { src: "/stickers/boba.png", width: 500, height: 500 },
   star: { src: "/stickers/star.png", width: 500, height: 500 },
   heart: { src: "/stickers/heart.png", width: 500, height: 500 },

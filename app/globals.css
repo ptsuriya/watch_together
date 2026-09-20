@@ -348,6 +348,17 @@ select.field { padding-right: 8px; }
 .code-field { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 .code-field::placeholder { letter-spacing: 0.06em; }
 
+.legal { position: relative; max-width: 48rem; padding-block: 48px 80px; }
+.legal h1 { color: var(--bark); font-size: clamp(2rem, 4vw, 2.75rem); font-weight: 800; letter-spacing: -0.02em; }
+.legal-updated { margin-top: 8px; color: var(--clay); font-size: 14px; }
+.legal section { margin-top: 32px; }
+.legal h2 { margin-bottom: 12px; color: var(--bark); font-size: 20px; font-weight: 800; }
+.legal ul { display: grid; gap: 10px; margin: 0; padding-left: 20px; color: var(--cocoa); line-height: 1.8; }
+.legal p { color: var(--cocoa); line-height: 1.8; }
+.legal a { color: var(--amber-deep); font-weight: 600; text-underline-offset: 3px; }
+.legal-contact { margin-top: 32px; color: var(--clay); }
+.legal-bear { display: block; width: 160px; height: auto; margin-top: 24px; }
+
 .site-footer { border-top: 2px solid var(--bark); background: var(--sand); }
 .footer-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding-block: 20px; }
 .footer-bear { width: 110px; height: auto; }
@@ -355,6 +366,7 @@ select.field { padding-right: 8px; }
 .footer-copy strong { color: var(--bark); font-size: 16px; font-weight: 800; letter-spacing: 0.02em; }
 .site-footer p { display: flex; align-items: center; gap: 8px; color: var(--clay); font-size: 15px; }
 .footer-sticker { width: 52px; height: auto; rotate: 10deg; }
+.footer-link { color: var(--amber-deep); font-weight: 600; text-underline-offset: 3px; }
 
 /* ---------- Room shell ---------- */
 
@@ -674,6 +686,7 @@ select.field { padding-right: 8px; }
 .helper-note.is-ok { color: var(--leaf-deep); font-weight: 600; }
 .helper-note.is-error { color: var(--terra-deep); }
 .helper-install { display: grid; gap: 10px; padding-top: 12px; border-top: 2px dashed var(--line); }
+.helper-icon { justify-self: start; width: 56px; height: 56px; }
 .helper-install strong { color: var(--bark); font-size: 15px; }
 .helper-install p { color: var(--clay); font-size: 14px; line-height: 1.6; }
 .helper-steps { display: grid; gap: 8px; margin: 0; padding-left: 20px; color: var(--cocoa); font-size: 14px; line-height: 1.7; }
