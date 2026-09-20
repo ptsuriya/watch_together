@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowRight, Check, Mic, MonitorPlay, Music2, QrCode, Star, Tv, UserX } from "lucide-react";
+import { ArrowRight, Check, Mic, MonitorPlay, Music2, QrCode, ScanLine, Star, Tv, UserX } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ROOM_MODES, type RoomMode } from "../../lib/room-state";
 import { MODE_LABELS } from "./room-model";
+import { QrScanDialog } from "./qr-scanner";
 import { Art, type ArtName, Brand } from "./ui";
 
 const MODE_ICONS: Record<RoomMode, typeof Tv> = { watch: MonitorPlay, remote: Tv, karaoke: Mic };
@@ -50,6 +51,18 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
   const [mode, setMode] = useState<RoomMode>("watch");
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState("");
+  const [scanning, setScanning] = useState(false);
+
+  function joinFromScan(value: string) {
+    const normalized = normalizeRoomCode(value);
+    setScanning(false);
+    if (!normalized) {
+      setCode(value.slice(0, 64));
+      setCodeError("QR นี้ไม่ใช่ห้องของ KUMA Listening Party");
+      return;
+    }
+    onJoin(normalized);
+  }
 
   function join(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -185,6 +198,9 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
                   เข้าห้อง <ArrowRight size={18} aria-hidden="true" />
                 </button>
               </div>
+              <button type="button" className="btn btn-secondary btn-block scan-button" onClick={() => setScanning(true)}>
+                <ScanLine size={18} aria-hidden="true" /> สแกน QR ด้วยกล้อง
+              </button>
               {codeError && <p id="room-code-error" className="form-note is-error">{codeError}</p>}
             </form>
           </div>
@@ -205,6 +221,8 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
           <Art name="pudding" className="footer-sticker" sizes="56px" />
         </div>
       </footer>
+
+      {scanning && <QrScanDialog onResult={joinFromScan} onClose={() => setScanning(false)} />}
     </div>
   );
 }

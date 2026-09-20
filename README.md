@@ -39,6 +39,10 @@ npm run dev
 - Room state is live-only. If the host reloads, guests hand the queue back; a room with no host online does not play.
 - `GET /api/video?id=` looks titles up through YouTube oEmbed and rejects videos that cannot be embedded before they reach the queue.
 
+## Joining a room
+
+People usually scan the QR on the host screen with their phone camera. The home page also has **สแกน QR ด้วยกล้อง**, which opens the camera in the page itself: Chrome and Edge decode with the browser's own `BarcodeDetector`, and everywhere else (Safari on iOS, for one) a small decoder is fetched only when the scanner opens. The code field accepts a whole invite link too.
+
 ## Crossfade
 
 Every mode keeps two YouTube players. When a song is within the crossfade of its end and something is queued, the next song starts on the second player while the first fades out; a manual skip uses a short 1.5 s fade instead. The host picks 0 (off), 3, 6 or 10 seconds next to the queue, and the setting travels with the room state so guests fade at the same time. iOS ignores `setVolume`, so players there switch without an overlap.
