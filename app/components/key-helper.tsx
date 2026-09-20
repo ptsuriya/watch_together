@@ -1,9 +1,9 @@
 "use client";
 
-import { Check, Copy, Download, RefreshCw } from "lucide-react";
+import { Check, Copy, Download, RefreshCw, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { HELPER_PROBE_URL, HELPER_STORE_URL, HELPER_ZIP_URL, type HelperStatus } from "../../lib/karaoke-key";
-import { Art } from "./ui";
+import { Art, Dialog } from "./ui";
 
 const EXTENSIONS_PAGE = "chrome://extensions";
 
@@ -13,7 +13,30 @@ export function KeyHelperProbe({ active }: { active: boolean }) {
   return <iframe src={HELPER_PROBE_URL} title="ตรวจส่วนเสริมเปลี่ยนคีย์" className="key-probe" tabIndex={-1} aria-hidden="true" />;
 }
 
-export function KeyHelperCard({ status }: { status: HelperStatus }) {
+const STATUS_LINE: Record<HelperStatus, { text: string; tone: string }> = {
+  ready: { text: "พร้อมเปลี่ยนคีย์จากมือถือแล้ว", tone: "is-ok" },
+  checking: { text: "กำลังตรวจส่วนเสริมเปลี่ยนคีย์…", tone: "" },
+  blocked: { text: "คลิกที่หน้านี้หนึ่งครั้งเพื่อปลดล็อกเสียง", tone: "is-error" },
+  missing: { text: "ยังไม่ได้ติดตั้งส่วนเสริม เสียงจะยังไม่เปลี่ยนคีย์", tone: "is-error" },
+  unsupported: { text: "จอนี้เปลี่ยนคีย์ไม่ได้ ต้องใช้ Chrome หรือ Edge บนคอมพิวเตอร์", tone: "is-error" },
+};
+
+/** One line in the karaoke sidebar, with a way back into the setup steps. */
+export function KeyHelperStatusLine({ status, onOpenSetup }: { status: HelperStatus; onOpenSetup: () => void }) {
+  const { text, tone } = STATUS_LINE[status];
+  return (
+    <p className={`helper-note ${tone}`}>
+      {status === "ready" ? <Check size={16} aria-hidden="true" /> : status === "checking" ? <span className="spinner" aria-hidden="true" /> : <TriangleAlert size={16} aria-hidden="true" />}
+      <span>{text}</span>
+      {status !== "ready" && status !== "checking" && (
+        <button type="button" className="text-btn" onClick={onOpenSetup}>วิธีทำให้เสียงเปลี่ยน</button>
+      )}
+    </p>
+  );
+}
+
+/** Opens by itself the moment a host starts a karaoke room, so nobody wonders why the key does nothing. */
+export function KaraokeSetupDialog({ status, onClose }: { status: HelperStatus; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -31,60 +54,72 @@ export function KeyHelperCard({ status }: { status: HelperStatus }) {
     }
   }
 
-  if (status === "ready") {
-    return (
-      <p className="helper-note is-ok">
-        <Check size={16} aria-hidden="true" /> ส่วนเสริมเปลี่ยนคีย์พร้อมแล้ว กดคีย์จากมือถือได้เลย
-      </p>
-    );
-  }
-
-  if (status === "checking") {
-    return <p className="helper-note"><span className="spinner" aria-hidden="true" /> กำลังตรวจส่วนเสริมเปลี่ยนคีย์…</p>;
-  }
-
-  if (status === "blocked") {
-    return <p className="helper-note is-error">คลิกที่หน้านี้หนึ่งครั้งเพื่อปลดล็อกเสียง แล้วลองกดคีย์ใหม่</p>;
-  }
-
-  if (status === "unsupported") {
-    return (
-      <p className="helper-note is-error">
-        เปลี่ยนคีย์ได้เมื่อจอกลางเป็น Chrome หรือ Edge บนคอมพิวเตอร์ ตอนนี้ปุ่มคีย์จะเปลี่ยนแค่ตัวเลขบนจอ
-      </p>
-    );
-  }
-
   return (
-    <div className="helper-install">
-      <Art name="karaokeKey" className="helper-icon" sizes="64px" />
-      <strong>ติดตั้งส่วนเสริมเปลี่ยนคีย์ (ทำครั้งเดียว)</strong>
-      <p>เครื่องนี้เป็นจอกลาง ต้องมีส่วนเสริมเพื่อให้ปุ่มคีย์บนมือถือเปลี่ยนเสียงเพลงได้จริง</p>
-      {HELPER_STORE_URL ? (
-        <a className="btn btn-honey btn-block" href={HELPER_STORE_URL} target="_blank" rel="noopener noreferrer">
-          <Download size={18} aria-hidden="true" /> ติดตั้งจาก Chrome Web Store
-        </a>
-      ) : (
+    <Dialog labelledBy="karaoke-setup-title" onClose={onClose}>
+      <Art name="karaokeKey" className="dialog-bear dialog-bear-mark" sizes="128px" />
+      <h2 id="karaoke-setup-title" className="dialog-title">
+        {status === "ready" ? "พร้อมร้องแล้ว!" : "อีกขั้นเดียว ให้ปุ่มคีย์เปลี่ยนเสียงจริง"}
+      </h2>
+
+      {status === "checking" && (
+        <p className="dialog-text"><span className="spinner" aria-hidden="true" /> กำลังตรวจว่าเครื่องนี้ติดตั้งส่วนเสริมไว้หรือยัง…</p>
+      )}
+
+      {status === "ready" && (
+        <p className="dialog-text">เครื่องนี้ปรับคีย์ได้แล้ว ให้เพื่อนสแกน QR แล้วกดเพิ่ม-ลดคีย์จากมือถือได้เลย</p>
+      )}
+
+      {status === "blocked" && (
+        <p className="dialog-text">เบราว์เซอร์ยังล็อกเสียงอยู่ คลิกที่หน้าห้องหนึ่งครั้ง แล้วลองกดปุ่มคีย์ใหม่อีกที</p>
+      )}
+
+      {status === "unsupported" && (
         <>
-          <a className="btn btn-honey btn-block" href={HELPER_ZIP_URL} download>
-            <Download size={18} aria-hidden="true" /> ดาวน์โหลดส่วนเสริม (.zip)
-          </a>
-          <ol className="helper-steps">
-            <li>ดับเบิลคลิกไฟล์ที่โหลดมา ให้แตกเป็นโฟลเดอร์ kuma-karaoke-key</li>
-            <li>
-              เปิดหน้า <code>{EXTENSIONS_PAGE}</code>
-              <button type="button" className="text-btn" onClick={copyExtensionsPage}>
-                {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />} {copied ? "คัดลอกแล้ว" : "คัดลอกที่อยู่"}
-              </button>
-              แล้วเปิด Developer mode ที่มุมขวาบน
-            </li>
-            <li>กด Load unpacked แล้วเลือกโฟลเดอร์ที่แตกไว้</li>
-          </ol>
+          <p className="dialog-text">
+            หน้าจอนี้เปลี่ยนคีย์ไม่ได้ เพราะทีวี มือถือ และแท็บเล็ตติดตั้งส่วนเสริมไม่ได้
+            ห้องยังใช้ได้ครบทุกอย่าง ทั้งคิวเพลง QR และอีโมจิ เพียงแต่ปุ่มคีย์จะเปลี่ยนแค่ตัวเลขบนจอ
+          </p>
+          <p className="dialog-text">ถ้าอยากให้เสียงเปลี่ยนคีย์จริง ให้เปิดห้องนี้บนคอมพิวเตอร์ที่ต่อกับทีวี แล้วใช้ Chrome หรือ Edge</p>
         </>
       )}
-      <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.location.reload()}>
-        <RefreshCw size={16} aria-hidden="true" /> ติดตั้งแล้ว รีเฟรชหน้า
+
+      {status === "missing" && (
+        <>
+          <p className="dialog-text">
+            เสียงเพลงอยู่ในตัวเล่นของ YouTube เว็บแตะไม่ได้โดยตรง ติดตั้งส่วนเสริมของเราครั้งเดียวบนเครื่องนี้
+            แล้วปุ่มคีย์บนมือถือทุกเครื่องจะเปลี่ยนเสียงเพลงได้ทันที
+          </p>
+          {HELPER_STORE_URL ? (
+            <a className="btn btn-honey btn-block" href={HELPER_STORE_URL} target="_blank" rel="noopener noreferrer">
+              <Download size={18} aria-hidden="true" /> ติดตั้งส่วนเสริม (คลิกเดียว)
+            </a>
+          ) : (
+            <>
+              <a className="btn btn-honey btn-block" href={HELPER_ZIP_URL} download>
+                <Download size={18} aria-hidden="true" /> ดาวน์โหลดส่วนเสริม (.zip)
+              </a>
+              <ol className="helper-steps">
+                <li>ดับเบิลคลิกไฟล์ที่โหลดมา ให้แตกเป็นโฟลเดอร์ kuma-karaoke-key</li>
+                <li>
+                  เปิดหน้า <code>{EXTENSIONS_PAGE}</code>
+                  <button type="button" className="text-btn" onClick={copyExtensionsPage}>
+                    {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />} {copied ? "คัดลอกแล้ว" : "คัดลอกที่อยู่"}
+                  </button>
+                  แล้วเปิด Developer mode ที่มุมขวาบน
+                </li>
+                <li>กด Load unpacked แล้วเลือกโฟลเดอร์ที่แตกไว้</li>
+              </ol>
+            </>
+          )}
+          <button type="button" className="btn btn-secondary btn-block" onClick={() => window.location.reload()}>
+            <RefreshCw size={16} aria-hidden="true" /> ติดตั้งแล้ว รีเฟรชหน้า
+          </button>
+        </>
+      )}
+
+      <button type="button" className="text-btn dialog-skip" onClick={onClose}>
+        {status === "ready" ? "เริ่มร้องเลย" : "ข้ามไปก่อน ใช้ห้องได้ตามปกติ"}
       </button>
-    </div>
+    </Dialog>
   );
 }

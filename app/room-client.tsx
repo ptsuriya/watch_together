@@ -11,6 +11,7 @@ import {
 import { isSupabaseConfigured } from "../lib/supabase";
 import { lookupVideo, parseYouTubeId } from "../lib/youtube";
 import { HomeScreen } from "./components/home-screen";
+import { KaraokeSetupDialog } from "./components/key-helper";
 import { BURST_LIFETIME_MS, type EmojiBurst, makeBurst } from "./components/reactions";
 import { RemoteRoom, WaitingRoom } from "./components/remote-room";
 import type { AddVideoResult, RoomModel, Toast } from "./components/room-model";
@@ -31,7 +32,7 @@ const TOAST_MS = 4000;
 const MAX_BURSTS = 8;
 const SKIP_AFTER_ERROR_MS = 2500;
 
-type DialogKind = "invite" | "name" | "notes";
+type DialogKind = "invite" | "name" | "notes" | "karaoke";
 
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -88,6 +89,7 @@ export default function RoomClient({
   const connectedRef = useRef(false);
   const burstIdRef = useRef(0);
   const keyHelperRef = useRef(false);
+  const karaokeSetupShownRef = useRef(false);
   const supabaseConfig = useMemo(() => ({ url: supabaseUrl, key: supabaseKey }), [supabaseKey, supabaseUrl]);
   const realtimeConfigured = isSupabaseConfigured(supabaseConfig);
 
@@ -282,6 +284,23 @@ export default function RoomClient({
   const selfName = listenerName || (isHost ? "โฮสต์" : selfId ? `ผู้ฟัง ${selfId.slice(0, 4).toUpperCase()}` : "ผู้ฟัง");
   const hostOnline = members.some((member) => member.isHost);
 
+  // A karaoke host meets the setup the moment the room opens, instead of wondering why the key does nothing.
+  useEffect(() => {
+    if (!isHost || state.mode !== "karaoke" || karaokeSetupShownRef.current || keyHelperStatus === "ready") return;
+    // Marked inside the timeout: a run that React cancels (StrictMode) must not count as shown.
+    const timeoutId = window.setTimeout(() => {
+      karaokeSetupShownRef.current = true;
+      setDialog("karaoke");
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [isHost, keyHelperStatus, state.mode]);
+
+  useEffect(() => {
+    if (dialog !== "karaoke" || keyHelperStatus !== "ready") return;
+    const timeoutId = window.setTimeout(() => setDialog(null), 2000);
+    return () => window.clearTimeout(timeoutId);
+  }, [dialog, keyHelperStatus]);
+
   useEffect(() => {
     const ready = keyHelperStatus === "ready";
     if (keyHelperRef.current === ready) return;
@@ -467,6 +486,7 @@ export default function RoomClient({
         bursts={bursts}
         keyHelperStatus={keyHelperStatus}
         onReact={sendReaction}
+        onOpenKaraokeSetup={() => setDialog("karaoke")}
       />
     );
   } else view = <RemoteRoom model={model} onRename={() => setDialog("name")} onReact={sendReaction} />;
@@ -486,6 +506,7 @@ export default function RoomClient({
       {!tvScreen && <ToastStack toasts={toasts} placement={isHost ? "corner" : "bottom"} />}
       {dialog === "invite" && <InviteDialog model={model} onClose={() => setDialog(null)} />}
       {dialog === "name" && <NameDialog name={listenerName} onSave={saveName} onClose={() => setDialog(null)} />}
+      {dialog === "karaoke" && <KaraokeSetupDialog status={keyHelperStatus} onClose={() => setDialog(null)} />}
       {dialog === "notes" && (
         <NotesDialog notes={state.notes} isHost={isHost} shared={state.notesShared} dispatch={dispatch} onClose={() => setDialog(null)} />
       )}

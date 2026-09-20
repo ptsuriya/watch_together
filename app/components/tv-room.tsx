@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { formatKey } from "../../lib/room-state";
 import type { HelperStatus } from "../../lib/karaoke-key";
-import { KeyHelperCard, KeyHelperProbe } from "./key-helper";
+import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { CrossfadeSelect, KeyControl, RoomQr } from "./room-panels";
@@ -24,6 +24,7 @@ export function TvRoom({
   bursts,
   keyHelperStatus,
   onReact,
+  onOpenKaraokeSetup,
 }: {
   model: RoomModel;
   player: ReactNode;
@@ -32,6 +33,7 @@ export function TvRoom({
   bursts: EmojiBurst[];
   keyHelperStatus: HelperStatus;
   onReact: (emoji: string) => void;
+  onOpenKaraokeSetup: () => void;
 }) {
   const { state, dispatch, selfName, inviteUrl, roomCode } = model;
   const karaoke = state.mode === "karaoke";
@@ -104,7 +106,7 @@ export function TvRoom({
         {karaoke && (
           <section className="card side-key" aria-label="คีย์และอีโมจิ">
             <KeyControl value={state.key} dispatch={dispatch} />
-            <KeyHelperCard status={keyHelperStatus} />
+            <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
             <EmojiPad onSend={onReact} compact />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </section>

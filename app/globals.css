@@ -682,7 +682,9 @@ select.field { padding-right: 8px; }
 }
 .key-reset:disabled { opacity: 0.4; text-decoration: none; }
 
-.helper-note { display: flex; align-items: center; gap: 8px; color: var(--clay); font-size: 14px; line-height: 1.6; }
+.helper-note { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--clay); font-size: 14px; line-height: 1.6; }
+.helper-note svg { flex: none; }
+.helper-note.is-error svg { color: var(--terra-deep); }
 .helper-note.is-ok { color: var(--leaf-deep); font-weight: 600; }
 .helper-note.is-error { color: var(--terra-deep); }
 .helper-install { display: grid; gap: 10px; padding-top: 12px; border-top: 2px dashed var(--line); }
@@ -769,6 +771,13 @@ select.field { padding-right: 8px; }
 .dialog-body form { display: grid; gap: 12px; }
 .dialog-close { position: absolute; top: 12px; right: 12px; }
 .dialog-bear { justify-self: center; width: 84px; height: auto; margin: -6px 0 -4px; }
+.dialog-skip { justify-self: center; }
+/* The mark is cream on cream, so it gets a honey disc behind it. */
+.dialog-bear-mark {
+  width: 76px; height: 76px; padding: 6px; border: 2px solid var(--bark); border-radius: 50%;
+  background: var(--honey); box-shadow: var(--shadow-sm);
+}
+.dialog .helper-steps { margin-top: -4px; }
 .dialog-title { padding-right: 40px; color: var(--bark); font-size: 24px; font-weight: 800; line-height: 1.2; }
 .dialog-text { color: var(--clay); }
 .invite-qr { display: grid; place-items: center; }
