@@ -4,7 +4,7 @@ import { Music2, PencilLine } from "lucide-react";
 import type { RealtimeStatus } from "../../lib/room-realtime";
 import { mayChangeKey, singerOf } from "../../lib/room-state";
 import { ChatBar, ChatLog, type ChatMessage } from "./chat";
-import { PartyButton, ScorePad, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
+import { DraftPicker, PartyButton, ScorePad, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
 import { EmojiPad } from "./reactions";
 import { MODE_LABELS, type RoomModel } from "./room-model";
@@ -51,6 +51,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
       </section>
 
       <TournamentFlashCard state={state} />
+      <DraftPicker state={state} selfName={selfName} dispatch={dispatch} />
       {state.tournament && (
         <section className="card remote-tournament" aria-label="ทัวร์นาเมนต์">
           <TournamentPanel state={state} selfName={selfName} compact />

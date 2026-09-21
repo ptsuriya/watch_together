@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  Bomb, Crown, Dices, ListOrdered, Medal, SlidersHorizontal, Star, Swords, ThumbsUp, Timer, Trash2, Trophy,
+  Bomb, Crown, Dices, ListOrdered, Medal, SlidersHorizontal, Star, Swords, Tag, ThumbsUp, Timer, Trash2, Trophy,
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
-  BOMB_SECOND_OPTIONS, isKaraoke, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, scoreAverage, SCORE_MAX, standingsBoard,
-  waitingOn,
+  BOMB_SECOND_OPTIONS, draftTurn, isKaraoke, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, ROUND_THEMES, scoreAverage,
+  SCORE_MAX, standingsBoard, TOUR_FORMATS, TOUR_SEEDINGS, waitingOn,
   type PartyGame, type QueueItem, type QueueOrder, type RoomIntent, type RoomState, type Spotlight,
+  type TourFormat, type TourSeeding,
 } from "../../lib/room-state";
 import type { RoomModel } from "./room-model";
 import { ChatToggle, CrossfadeSelect, KeyControlSelect, NotesToggle } from "./room-panels";
@@ -26,6 +27,17 @@ const GAME_LABELS: Record<PartyGame, { name: string; hint: string }> = {
   blind: { name: "ร้องเพลงมั่ว", hint: "เพลงที่เพิ่มเข้ามาจะถูกสุ่มให้คนอื่นร้อง เจ้าตัวไม่ได้เลือกเอง" },
 };
 
+const FORMAT_LABELS: Record<TourFormat, { name: string; hint: string }> = {
+  solo: { name: "แข่งเพลงเดี่ยว", hint: "ทุกคนร้องรอบละ 1 เพลง คนคะแนนน้อยสุดของรอบตกรอบ" },
+  battle: { name: "แบทเทิลจับคู่", hint: "จับคู่ชนกันทีละคู่ ใครคะแนนน้อยกว่าในคู่ตกรอบ ผู้ชนะไปเจอกันรอบต่อไป" },
+};
+
+const SEEDING_LABELS: Record<TourSeeding, { name: string; hint: string }> = {
+  random: { name: "สุ่มตำแหน่ง", hint: "ห้องสุ่มสายให้เลย ไม่มีใครเลือกได้" },
+  score: { name: "ตามคะแนนคืนนี้", hint: "คนคะแนนดีสุดเจอคนคะแนนน้อยสุด เหมือนสายวางมือ" },
+  pick: { name: "เลือกตำแหน่งเอง", hint: "สุ่มลำดับคนเลือก แล้วแต่ละคนเลือกช่องจากมือถือ คนท้ายๆ เหลือให้เลือกน้อยลง" },
+};
+
 function timeLeft(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -38,6 +50,10 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
   const gameId = useId();
   const bombId = useId();
   const karaoke = isKaraoke(state.mode);
+  const formatId = useId();
+  const seedId = useId();
+  const [format, setFormat] = useState<TourFormat>("solo");
+  const [seeding, setSeeding] = useState<TourSeeding>("random");
 
   if (!canManage) {
     return (
@@ -136,18 +152,31 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           {state.tournament ? (
             <>
               <TournamentPanel state={state} />
+              <ThemePicker theme={state.tournament.theme} dispatch={dispatch} />
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "tournament", action: "stop" })}>
                 จบทัวร์นาเมนต์
               </button>
             </>
           ) : (
             <>
-              <button type="button" className="btn btn-honey" onClick={() => dispatch({ kind: "tournament", action: "start" })}>
+              <label htmlFor={formatId}>รูปแบบ</label>
+              <select id={formatId} className="field" value={format} onChange={(event) => setFormat(event.target.value as TourFormat)}>
+                {TOUR_FORMATS.map((option) => <option key={option} value={option}>{FORMAT_LABELS[option].name}</option>)}
+              </select>
+              <small>{FORMAT_LABELS[format].hint}</small>
+
+              <label htmlFor={seedId}>จับคู่ด้วย</label>
+              <select id={seedId} className="field" value={seeding} onChange={(event) => setSeeding(event.target.value as TourSeeding)}>
+                {TOUR_SEEDINGS.map((option) => <option key={option} value={option}>{SEEDING_LABELS[option].name}</option>)}
+              </select>
+              <small>{SEEDING_LABELS[seeding].hint}</small>
+
+              <button type="button" className="btn btn-honey" onClick={() => dispatch({ kind: "tournament", action: "start", format, seeding })}>
                 <Swords size={18} aria-hidden="true" /> เริ่มทัวร์นาเมนต์
               </button>
               <small>
-                ทุกคนในห้องร้องรอบละ 1 เพลง จบรอบคนคะแนนน้อยสุดตกรอบ จนเหลือคนเดียว — เปิดให้คะแนนอัตโนมัติ
-                และปิดครอสเฟดไว้ให้ด้วย เพลงจะได้จบเป็นเพลงๆ ไม่ทับกัน (จบทัวร์นาเมนต์แล้วครอสเฟดกลับมาเหมือนเดิม)
+                เปิดให้คะแนนอัตโนมัติ และปิดครอสเฟดไว้ให้ด้วย เพลงจะได้จบเป็นเพลงๆ ไม่ทับกัน
+                (จบทัวร์นาเมนต์แล้วครอสเฟดกลับมาเหมือนเดิม)
               </small>
             </>
           )}
@@ -293,6 +322,55 @@ export function ScoreBoard({ state }: { state: RoomState }) {
   );
 }
 
+/** What this round is about. A singing show calls it a genre; the room just needs a word. */
+function ThemePicker({ theme, dispatch }: { theme: string; dispatch: (intent: RoomIntent) => void }) {
+  const themeId = useId();
+  const [draft, setDraft] = useState(theme);
+  const [typing, setTyping] = useState(false);
+  return (
+    <div className="theme-picker">
+      <label htmlFor={themeId}><Tag size={15} aria-hidden="true" /> แนวเพลงของรอบนี้</label>
+      <input
+        id={themeId}
+        className="field"
+        value={typing ? draft : theme}
+        maxLength={24}
+        placeholder="เช่น ลูกทุ่ง หรือเว้นว่างไว้ก็ได้"
+        onChange={(event) => {
+          setTyping(true);
+          setDraft(event.target.value);
+        }}
+        onBlur={() => {
+          setTyping(false);
+          dispatch({ kind: "tournamentTheme", theme: draft });
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          setTyping(false);
+          dispatch({ kind: "tournamentTheme", theme: draft });
+        }}
+      />
+      <div className="theme-chips">
+        {ROUND_THEMES.map((name) => (
+          <button
+            key={name}
+            type="button"
+            className={`chip-btn${theme === name ? " is-on" : ""}`}
+            onClick={() => {
+              setTyping(false);
+              setDraft(name);
+              dispatch({ kind: "tournamentTheme", theme: theme === name ? "" : name });
+            }}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The moment itself, big enough to look up at: the knock-out starting, someone going out, or a champion. */
 export function TournamentFlashCard({ state }: { state: RoomState }) {
   const flash = state.tournament?.flash;
@@ -335,17 +413,80 @@ export function TournamentPanel({ state, selfName, compact = false }: {
   }
   const waiting = waitingOn(game);
   const mine = selfName && waiting.includes(selfName);
+  const picking = draftTurn(game);
   return (
     <div className={`tournament${mine ? " is-mine" : ""}`} aria-live="polite">
       <p className="tournament-head">
         <Swords size={16} aria-hidden="true" /> ทัวร์นาเมนต์ รอบ {game.round}
+        {game.theme && <em className="tournament-theme">{game.theme}</em>}
         <em>เหลือ {game.players.length} คน</em>
       </p>
-      <p className="tournament-line">
-        {mine ? "ถึงตาคุณแล้ว ขอเพลงของคุณได้เลย" : waiting.length > 0 ? `รออยู่: ${waiting.join(", ")}` : "รอบนี้ร้องครบแล้ว"}
-      </p>
+      {picking ? (
+        <p className="tournament-line">
+          {picking === selfName ? "ถึงตาคุณเลือกตำแหน่ง เลือกช่องข้างล่างได้เลย" : `รอ ${picking} เลือกตำแหน่งในสาย`}
+        </p>
+      ) : (
+        <>
+          {game.format === "battle" && game.pairs.length > 0 && (
+            <ol className="bracket">
+              {game.pairs.map((pair) => (
+                <li key={`${pair.a}-${pair.b ?? "bye"}`} className={pair.b ? undefined : "is-bye"}>
+                  <span className={game.done.includes(pair.a) ? "is-sung" : undefined}>
+                    {pair.a}{game.scores[pair.a] !== undefined && <em>{game.scores[pair.a]}</em>}
+                  </span>
+                  <small>{pair.b ? "พบ" : "ผ่านเข้ารอบ"}</small>
+                  {pair.b && (
+                    <span className={game.done.includes(pair.b) ? "is-sung" : undefined}>
+                      {pair.b}{game.scores[pair.b] !== undefined && <em>{game.scores[pair.b]}</em>}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="tournament-line">
+            {mine ? "ถึงตาคุณแล้ว ขอเพลงของคุณได้เลย" : waiting.length > 0 ? `รออยู่: ${waiting.join(", ")}` : "รอบนี้ร้องครบแล้ว"}
+          </p>
+        </>
+      )}
       {game.out.length > 0 && <p className="tournament-out">ตกรอบ: {game.out.join(", ")}</p>}
     </div>
+  );
+}
+
+/** "pick" seeding, on the phone of whoever is choosing: the open slots, as buttons. */
+export function DraftPicker({ state, selfName, dispatch }: {
+  state: RoomState;
+  selfName: string;
+  dispatch: (intent: RoomIntent) => void;
+}) {
+  const game = state.tournament;
+  const draft = game?.draft;
+  if (!game || !draft || draftTurn(game) !== selfName) return null;
+  return (
+    <section className="card draft-picker" aria-label="เลือกตำแหน่งในสาย">
+      <p className="draft-head"><Swords size={16} aria-hidden="true" /> ถึงตาคุณเลือกตำแหน่ง</p>
+      <small>
+        {game.format === "battle"
+          ? "ช่องที่ติดกันคือคู่ที่จะเจอกัน เลือกให้ดีว่าจะไปเจอใคร"
+          : "ช่องคือลำดับการร้องในรอบนี้"}
+      </small>
+      <ol className="draft-slots">
+        {draft.slots.map((taken, slot) => (
+          <li key={slot}>
+            <button
+              type="button"
+              className={`draft-slot${taken ? " is-taken" : ""}`}
+              disabled={Boolean(taken)}
+              onClick={() => dispatch({ kind: "tournamentPick", slot })}
+            >
+              <em>{slot + 1}</em>
+              <span>{taken ?? "ว่าง"}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

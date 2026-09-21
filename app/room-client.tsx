@@ -179,7 +179,8 @@ export default function RoomClient({
   const dispatch = useCallback((intent: RoomIntent) => {
     if (isHostRef.current || !realtimeConfigured) {
       // The room, not the sender, decides who the mic lands on and whose vote this is.
-      if (intent.kind === "kick") commit({ ...intent, by: isHostRef.current ? "host" : "cohost" });
+      if (intent.kind === "tournamentPick") commit({ ...intent, name: selfNameRef.current });
+      else if (intent.kind === "kick") commit({ ...intent, by: isHostRef.current ? "host" : "cohost" });
       else if (intent.kind === "bomb") startBombRef.current();
       else if (intent.kind === "tournament" && intent.action === "start") {
         commit({ kind: "tournament", action: "start", players: playerNamesRef.current() });
@@ -397,6 +398,11 @@ export default function RoomClient({
         // Voting and rating only count when the room knows who sent them.
         if (intent.kind === "vote" || intent.kind === "score") {
           if (fromId) commit({ ...intent, memberId: fromId });
+          return;
+        }
+        // A slot is claimed by the name the room knows this person as, never by one they send.
+        if (intent.kind === "tournamentPick") {
+          if (fromName) commit({ kind: "tournamentPick", slot: intent.slot, name: fromName });
           return;
         }
         if (intent.kind === "add") {

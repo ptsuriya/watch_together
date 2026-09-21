@@ -131,7 +131,33 @@ export type ScoreResult = { title: string; singer: string; average: number; coun
  */
 export type TournamentFlash = { kind: "start" | "out" | "champion"; name: string; left: number };
 
+/** Everyone sings every round, or the round is a set of head-to-head pairs. */
+export type TourFormat = "solo" | "battle";
+export const TOUR_FORMATS = ["solo", "battle"] as const satisfies readonly TourFormat[];
+
+/** How the order (and so the pairs) is decided each round. */
+export type TourSeeding = "random" | "score" | "pick";
+export const TOUR_SEEDINGS = ["random", "score", "pick"] as const satisfies readonly TourSeeding[];
+
+/** One head-to-head. A bye has nobody on the other side and goes through. */
+export type TourPair = { a: string; b: string | null };
+
+/** "pick" seeding: everyone chooses their own slot, in a random order of choosing. */
+export type TourDraft = { order: string[]; turn: number; slots: (string | null)[] };
+
+/** Genres a round can be about, the way a singing show does it. */
+export const ROUND_THEMES = ["แร็พ", "ป็อป", "ฮิปฮอป", "ลูกทุ่ง", "ร็อค", "เพื่อชีวิต", "สากล", "อนิเมะ"] as const;
+export const MAX_THEME = 24;
+
 export type Tournament = {
+  format: TourFormat;
+  seeding: TourSeeding;
+  /** What this round is about, e.g. a genre. Empty when the round is open. */
+  theme: string;
+  /** Battle format: this round's pairs, in bracket order. */
+  pairs: TourPair[];
+  /** Set while everyone is choosing their slot; nobody sings until it is done. */
+  draft: TourDraft | null;
   round: number;
   /** Still in, in the order they joined. */
   players: string[];
@@ -228,13 +254,16 @@ export type RoomIntent =
   | { kind: "scoreClear" }
   | { kind: "standingsReset" }
   /** The host starts it with the room's names; anyone managing may call it off. */
-  | { kind: "tournament"; action: "start" | "stop"; players?: string[] }
+  | { kind: "tournament"; action: "start" | "stop"; players?: string[]; format?: TourFormat; seeding?: TourSeeding }
+  /** A player choosing their own slot in the bracket, from their own phone. */
+  | { kind: "tournamentPick"; slot: number; name?: string }
+  | { kind: "tournamentTheme"; theme: string }
   | { kind: "tournamentFlash" };
 
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
-  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "vocalCut", "eq", "voiceRoom", "kick", "unban",
+  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "tournamentTheme", "vocalCut", "eq", "voiceRoom", "kick", "unban",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -242,7 +271,8 @@ export type GuestIntent = Extract<
   RoomIntent,
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
-    | "bomb" | "standingsReset" | "tournament" | "vocalCut" | "eq" | "voiceRoom" | "kick" | "unban" }
+    | "bomb" | "standingsReset" | "tournament" | "tournamentPick" | "tournamentTheme" | "vocalCut" | "eq"
+    | "voiceRoom" | "kick" | "unban" }
 >;
 
 export type RoomEvent =
@@ -488,12 +518,26 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
         scoring: true,
         scores: {},
         crossfade: 0,
-        tournament: {
-          round: 1, players, out: [], done: [], scores: {}, champion: null,
-          flash: { kind: "start", name: "", left: players.length },
-          crossfadeBefore: state.crossfade,
-        },
+        tournament: startTournament(players, intent.format, intent.seeding, state),
       };
+    }
+    case "tournamentTheme": {
+      if (!state.tournament) return state;
+      const theme = text(intent.theme, MAX_THEME);
+      return theme === state.tournament.theme ? state : { ...state, tournament: { ...state.tournament, theme } };
+    }
+    case "tournamentPick": {
+      const game = state.tournament;
+      if (!game?.draft || !intent.name) return state;
+      const draft = game.draft;
+      // Only the person whose turn it is, and only into a slot nobody has taken.
+      if (draft.order[draft.turn] !== intent.name) return state;
+      if (intent.slot < 0 || intent.slot >= draft.slots.length || draft.slots[intent.slot] !== null) return state;
+      const slots = draft.slots.map((name, at) => (at === intent.slot ? intent.name ?? null : name));
+      const turn = draft.turn + 1;
+      if (turn < draft.order.length) return { ...state, tournament: { ...game, draft: { ...draft, slots, turn } } };
+      const order = slots.filter((name): name is string => name !== null);
+      return { ...state, tournament: { ...game, draft: null, players: order, pairs: makePairs(game.format, order) } };
     }
     case "tournamentFlash": {
       if (!state.tournament?.flash) return state;
@@ -540,32 +584,113 @@ function closeScores(state: RoomState): Pick<RoomState, "scores" | "lastScore" |
   };
 }
 
-/** Records this singer's round, and when the last player has sung, sends the lowest score home. */
-function playRound(game: Tournament, singer: string, average: number): Tournament {
-  if (game.champion || !game.players.includes(singer) || game.done.includes(singer)) return game;
-  const done = [...game.done, singer];
-  const scores = { ...game.scores, [singer]: average };
-  if (done.length < game.players.length) return { ...game, done, scores };
-  const ranked = [...game.players].sort((a, b) => (scores[a] ?? 0) - (scores[b] ?? 0));
-  const loser = ranked[0];
-  const players = game.players.filter((name) => name !== loser);
-  const out = [...game.out, loser];
-  if (players.length <= 1) {
-    const champion = players[0] ?? loser;
-    return {
-      ...game, players, out, done: [], scores: {}, champion,
-      flash: { kind: "champion", name: champion, left: 1 },
-    };
-  }
+/** Sets a knock-out up: who is in it, in what order, and what the first round looks like. */
+function startTournament(players: string[], format: unknown, seeding: unknown, state: RoomState): Tournament {
+  const shape = TOUR_FORMATS.find((option) => option === format) ?? "solo";
+  const how = TOUR_SEEDINGS.find((option) => option === seeding) ?? "random";
+  const ordered = how === "score" ? bySeason(players, state) : shuffle(players);
+  const drafting = how === "pick";
   return {
-    ...game, round: game.round + 1, players, out, done: [], scores: {},
-    flash: { kind: "out", name: loser, left: players.length },
+    format: shape,
+    seeding: how,
+    theme: "",
+    round: 1,
+    players: drafting ? players : ordered,
+    pairs: drafting ? [] : makePairs(shape, ordered),
+    draft: drafting ? { order: shuffle(players), turn: 0, slots: players.map(() => null) } : null,
+    out: [],
+    done: [],
+    scores: {},
+    champion: null,
+    flash: { kind: "start", name: "", left: players.length },
+    crossfadeBefore: state.crossfade,
   };
 }
 
-/** Who the room is still waiting on this round. */
+function shuffle(names: string[]) {
+  const list = [...names];
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const at = Math.floor(Math.random() * (i + 1));
+    [list[i], list[at]] = [list[at], list[i]];
+  }
+  return list;
+}
+
+/** Best of the night first, so the strongest meet the weakest, the way a seeded bracket does. */
+function bySeason(players: string[], state: RoomState) {
+  const board = standingsBoard(state);
+  const points = new Map(board.map((row) => [row.name, row.points]));
+  return [...players].sort((a, b) => (points.get(b) ?? 0) - (points.get(a) ?? 0));
+}
+
+/** Battle: first against last, second against second-last, and a bye for whoever is left over. */
+export function makePairs(format: TourFormat, order: string[]): TourPair[] {
+  if (format !== "battle") return [];
+  const list = [...order];
+  const pairs: TourPair[] = [];
+  while (list.length > 1) {
+    pairs.push({ a: list.shift() as string, b: list.pop() as string });
+  }
+  if (list.length === 1) pairs.push({ a: list[0], b: null });
+  return pairs;
+}
+
+/** Whose turn it is to choose a slot, if the room is still choosing. */
+export function draftTurn(game: Tournament) {
+  return game.draft ? game.draft.order[game.draft.turn] ?? null : null;
+}
+
+/** Records this singer's round, and when the last player has sung, sends the lowest score home. */
+function playRound(game: Tournament, singer: string, average: number): Tournament {
+  if (game.champion || game.draft || !game.players.includes(singer) || game.done.includes(singer)) return game;
+  const done = [...game.done, singer];
+  const scores = { ...game.scores, [singer]: average };
+  // Nobody is out until everyone who owes a song this round has sung one.
+  const owed = game.format === "battle" ? game.pairs.flatMap((pair) => (pair.b ? [pair.a, pair.b] : [])) : game.players;
+  if (owed.some((name) => !done.includes(name))) return { ...game, done, scores };
+  const losers = game.format === "battle" ? battleLosers(game.pairs, scores) : [lowest(game.players, scores)];
+  return nextRound(game, scores, losers);
+}
+
+/** Each pair sends one home; a bye has nobody to lose to. */
+function battleLosers(pairs: TourPair[], scores: Record<string, number>) {
+  return pairs.flatMap((pair) => {
+    if (!pair.b) return [];
+    return [(scores[pair.a] ?? 0) >= (scores[pair.b] ?? 0) ? pair.b : pair.a];
+  });
+}
+
+function lowest(players: string[], scores: Record<string, number>) {
+  return [...players].sort((a, b) => (scores[a] ?? 0) - (scores[b] ?? 0))[0];
+}
+
+/** Sends the round's losers home and sets the next one up, or crowns whoever is left. */
+function nextRound(game: Tournament, scores: Record<string, number>, losers: string[]): Tournament {
+  const players = game.players.filter((name) => !losers.includes(name));
+  const out = [...game.out, ...losers];
+  if (players.length <= 1) {
+    const champion = players[0] ?? losers[losers.length - 1] ?? "";
+    return { ...game, players, out, done: [], scores: {}, pairs: [], champion, flash: { kind: "champion", name: champion, left: 1 } };
+  }
+  // The strongest of the night meet the weakest again, unless the room asked for chance.
+  const order = game.seeding === "random" ? players : [...players].sort((a, b) => (scores[b] ?? 0) - (scores[a] ?? 0));
+  return {
+    ...game,
+    round: game.round + 1,
+    players: order,
+    out,
+    pairs: makePairs(game.format, order),
+    done: [],
+    scores: {},
+    theme: "",
+    flash: { kind: "out", name: losers.join(", "), left: players.length },
+  };
+}
+
+/** Who the room is still waiting on this round. In a battle, a bye owes nothing. */
 export function waitingOn(game: Tournament) {
-  return game.players.filter((name) => !game.done.includes(name));
+  const owed = game.format === "battle" ? game.pairs.flatMap((pair) => (pair.b ? [pair.a, pair.b] : [])) : game.players;
+  return owed.filter((name) => !game.done.includes(name));
 }
 
 /** The running average of the song playing now, or null while nobody has rated it. */
@@ -731,6 +856,16 @@ function count(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(999, Math.round(value))) : 0;
 }
 
+function sanitizePairs(value: unknown[], players: string[]): TourPair[] {
+  return value.slice(0, MAX_PLAYERS).flatMap((raw) => {
+    if (!isRecord(raw)) return [];
+    const a = text(raw.a, 32);
+    const b = text(raw.b, 32);
+    if (!a || !players.includes(a)) return [];
+    return [{ a, b: b && players.includes(b) ? b : null }];
+  });
+}
+
 function sanitizeTournament(value: unknown): Tournament | null {
   if (!isRecord(value)) return null;
   const players = names(value.players);
@@ -748,9 +883,21 @@ function sanitizeTournament(value: unknown): Tournament | null {
   const round = typeof value.round === "number" && Number.isFinite(value.round) ? Math.max(1, Math.round(value.round)) : 1;
   const flash = isRecord(value.flash) ? value.flash : null;
   const kind = flash && (flash.kind === "start" || flash.kind === "out" || flash.kind === "champion") ? flash.kind : null;
+  const draft = isRecord(value.draft) ? value.draft : null;
+  const slots = Array.isArray(draft?.slots)
+    ? draft.slots.slice(0, MAX_PLAYERS).map((name) => text(name, 32) || null)
+    : [];
+  const order = draft ? names(draft.order) : [];
   return {
+    format: TOUR_FORMATS.find((option) => option === value.format) ?? "solo",
+    seeding: TOUR_SEEDINGS.find((option) => option === value.seeding) ?? "random",
+    theme: text(value.theme, MAX_THEME),
     round: Math.min(round, 99),
     players,
+    pairs: Array.isArray(value.pairs) ? sanitizePairs(value.pairs, players) : [],
+    draft: draft && order.length > 0 && slots.length === order.length
+      ? { order, turn: Math.max(0, Math.min(order.length, count(draft.turn))), slots }
+      : null,
     out,
     done: names(value.done).filter((name) => players.includes(name)),
     scores,
@@ -864,8 +1011,21 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
     case "tournament": {
       // Who is playing comes from the host's own member list, never from the sender.
       const action = value.action === "start" ? "start" : value.action === "stop" ? "stop" : null;
-      return action ? { kind: "tournament", action } : null;
+      if (!action) return null;
+      return {
+        kind: "tournament",
+        action,
+        format: TOUR_FORMATS.find((option) => option === value.format),
+        seeding: TOUR_SEEDINGS.find((option) => option === value.seeding),
+      };
     }
+    case "tournamentPick": {
+      // The name is filled in by the host from the envelope, so a sender's own is dropped.
+      const slot = typeof value.slot === "number" && Number.isFinite(value.slot) ? Math.round(value.slot) : null;
+      return slot === null || slot < 0 || slot > MAX_PLAYERS ? null : { kind: "tournamentPick", slot };
+    }
+    case "tournamentTheme":
+      return typeof value.theme === "string" ? { kind: "tournamentTheme", theme: value.theme } : null;
     default:
       return null;
   }

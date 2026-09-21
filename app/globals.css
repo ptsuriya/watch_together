@@ -1066,6 +1066,34 @@ select.field { padding-right: 8px; }
 .tournament-head { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 800; }
 .tournament-head em { margin-left: auto; color: var(--clay); font-size: 13px; font-style: normal; font-weight: 600; }
 .tournament-line { font-size: 14px; }
+.tournament-theme { padding: 1px 10px; border-radius: 999px; background: var(--gold); color: var(--bark); font-size: 12px; font-weight: 700; }
+.bracket { display: grid; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+.bracket li {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+  padding: 6px 10px; border: 2px solid var(--line); border-radius: 12px; background: var(--white); font-size: 14px;
+}
+.bracket li.is-bye { grid-template-columns: 1fr auto; }
+.bracket li span { min-width: 0; overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.bracket li span:last-child { text-align: right; }
+.bracket li span.is-sung { color: var(--clay); }
+.bracket li em { margin-left: 6px; color: var(--amber-deep); font-style: normal; font-weight: 800; }
+.bracket li small { color: var(--clay); font-size: 12px; }
+
+.theme-picker { display: grid; gap: 8px; }
+.theme-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.theme-chips .chip-btn { min-height: 32px; padding: 0 10px; font-size: 13px; }
+
+.draft-picker { display: grid; gap: 8px; padding: 16px; }
+.draft-head { display: flex; align-items: center; gap: 6px; color: var(--bark); font-weight: 800; }
+.draft-picker small { color: var(--clay); font-size: 13px; }
+.draft-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.draft-slot {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 0 12px;
+  border: 2px solid var(--bark); border-radius: 14px; background: var(--honey); color: var(--bark);
+  font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.draft-slot em { font-style: normal; color: var(--amber-deep); }
+.draft-slot.is-taken { background: var(--white); border-color: var(--line); color: var(--clay); cursor: default; }
 .tournament-out { color: var(--clay); font-size: 13px; }
 .tournament.is-champion {
   display: flex; align-items: center; gap: 12px; background: var(--honey); box-shadow: var(--shadow-sm);
