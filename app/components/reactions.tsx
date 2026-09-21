@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { REACTIONS, sanitizeReaction } from "../../lib/room-state";
 import { Dialog } from "./ui";
+import ClickSpark from "./bits/click-spark";
 
 export type EmojiParticle = {
   x: number; delay: number; duration: number; size: number; drift: number; spin: number;
@@ -132,6 +133,7 @@ export function EmojiPad({ onSend, compact = false }: { onSend: (emoji: string) 
 
   return (
     <>
+      <ClickSpark sparkColor="#C07B2A" sparkSize={9} sparkRadius={20} sparkCount={9} duration={420}>
       <div className={`emoji-pad${compact ? " emoji-pad-compact" : ""}`}>
         {REACTIONS.map((emoji) => (
           <button key={emoji} type="button" className="emoji-button" onClick={() => onSend(emoji)} aria-label={`ส่ง ${emoji}`}>
@@ -152,6 +154,7 @@ export function EmojiPad({ onSend, compact = false }: { onSend: (emoji: string) 
           <Plus size={compact ? 18 : 24} aria-hidden="true" />
         </button>
       </div>
+      </ClickSpark>
       {picking && <EmojiPicker current={custom} onPick={saveCustom} onClose={() => setPicking(false)} />}
     </>
   );

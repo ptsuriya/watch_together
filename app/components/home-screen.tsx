@@ -4,6 +4,8 @@ import { ArrowRight, Check, Mic, MicVocal, MonitorPlay, Music2, QrCode, ScanLine
 import Link from "next/link";
 import { useState } from "react";
 import { ROOM_MODES, type RoomMode } from "../../lib/room-state";
+import Magnet from "./bits/magnet";
+import RotatingText from "./bits/rotating-text";
 import { MODE_LABELS } from "./room-model";
 import { QrScanDialog } from "./qr-scanner";
 import { Art, type ArtName, Brand } from "./ui";
@@ -18,6 +20,9 @@ const MODE_POINTS: Record<RoomMode, string[]> = {
   karaoke: ["ทุกอย่างของโหมดรีโมท", "ลด-เพิ่มคีย์จากมือถือ", "จอกลางเปลี่ยนคีย์จริงด้วยส่วนเสริม KUMA"],
   singalong: ["ร้องกันคนละที่ ทุกคนมีจอของตัวเอง", "เนื้อเพลงขึ้นทุกเครื่อง อ่านตัวใหญ่ได้", "ปรับคีย์ทั้งห้อง เครื่องที่ติดตั้งส่วนเสริมจะได้ยินคีย์ใหม่"],
 };
+
+/** What a room is for, turning over in the headline. */
+const HERO_WORDS = ["ดูยูทูบ", "ร้องเกะ", "แข่งร้อง", "ปาร์ตี้"];
 
 const ROOM_CODE = /^WAVE-[A-Z0-9]{8}$/;
 
@@ -92,7 +97,20 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
                 <span className="live-dot" aria-hidden="true" /> ปาร์ตี้ฟังเพลงกับหมี KUMA · ไม่ต้องสมัคร
               </span>
               <h1>
-                ดูยูทูบด้วยกัน
+                <span className="hero-rotate">
+                  <RotatingText
+                    texts={HERO_WORDS}
+                    mainClassName="hero-rotate-word"
+                    staggerFrom="last"
+                    staggerDuration={0.025}
+                    rotationInterval={2600}
+                    initial={{ y: "100%", opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: "-110%", opacity: 0 }}
+                    transition={{ type: "spring", damping: 26, stiffness: 380 }}
+                  />
+                  <span>ด้วยกัน</span>
+                </span>
                 <br />
                 ไม่ต้องนับ 3 2 1
               </h1>
@@ -118,9 +136,11 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
                   );
                 })}
               </div>
-              <button type="button" className="btn btn-primary btn-lg" onClick={() => onCreate(mode)}>
-                สร้างห้อง{MODE_LABELS[mode].name} <ArrowRight size={20} aria-hidden="true" />
-              </button>
+              <Magnet padding={70} magnetStrength={4} wrapperClassName="cta-magnet">
+                <button type="button" className="btn btn-primary btn-lg" onClick={() => onCreate(mode)}>
+                  สร้างห้อง{MODE_LABELS[mode].name} <ArrowRight size={20} aria-hidden="true" />
+                </button>
+              </Magnet>
             </div>
 
             <div className="hero-art" aria-hidden="true">

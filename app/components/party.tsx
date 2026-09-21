@@ -13,6 +13,10 @@ import {
 import type { RoomModel } from "./room-model";
 import { ChatToggle, CrossfadeSelect, KeyControlSelect, NotesToggle } from "./room-panels";
 import { VoiceRoomField } from "./voice-room";
+import CountUp from "./bits/count-up";
+import HoldButton from "./bits/hold-button";
+import SquishSwitch from "./bits/squish-switch";
+import { celebrate, originOf } from "./celebrate";
 import PeekRating from "./peek-rating";
 import { Art, Dialog } from "./ui";
 
@@ -141,15 +145,21 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           </div>
         )}
 
-        {karaoke && <label className="party-check">
-          <input
-            type="checkbox"
+        {karaoke && <div className="party-check">
+          <SquishSwitch
             checked={state.scoring}
-            onChange={(event) => dispatch({ kind: "scoring", enabled: event.target.checked })}
+            onChange={(enabled) => dispatch({ kind: "scoring", enabled })}
+            ariaLabel="ให้คะแนนเพลงที่กำลังเล่น"
+            trackColor="#E8C99A"
+            trackOnColor="#C07B2A"
+            thumbColor="#FFFFFF"
+            thumbOnColor="#FFF0CC"
+            width={52}
+            height={30}
           />
           <span><Star size={16} aria-hidden="true" /> ให้คะแนนเพลงที่กำลังเล่น</span>
           <small>ทุกคนให้ดาวได้คนละครั้ง คะแนนของแต่ละเพลงสะสมเป็นตารางทั้งคืน และปล่อยให้ระเบิดไมค์หมดเวลาจะโดนหัก 1 คะแนน</small>
-        </label>}
+        </div>}
 
         {karaoke && <div className="party-row">
           <span className="party-row-title"><Swords size={16} aria-hidden="true" /> ทัวร์นาเมนต์</span>
@@ -157,9 +167,19 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
             <>
               <TournamentPanel state={state} />
               <ThemePicker theme={state.tournament.theme} dispatch={dispatch} />
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "tournament", action: "stop" })}>
-                จบทัวร์นาเมนต์
-              </button>
+              <HoldButton
+                size="sm"
+                holdTime={1200}
+                backgroundColor="#FFFFFF"
+                fillColor="#C86858"
+                textColor="#2A1010"
+                fillTextColor="#FFFFFF"
+                radius={999}
+                doneLabel="จบแล้ว"
+                onHold={() => dispatch({ kind: "tournament", action: "stop" })}
+              >
+                กดค้างเพื่อจบทัวร์นาเมนต์
+              </HoldButton>
             </>
           ) : (
             <>
@@ -190,9 +210,20 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           <div className="party-row">
             <span className="party-row-title"><Trophy size={16} aria-hidden="true" /> ตารางคะแนนคืนนี้</span>
             <ScoreTable state={state} />
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "standingsReset" })}>
-              <Trash2 size={16} aria-hidden="true" /> ล้างตารางคะแนน
-            </button>
+            <HoldButton
+              size="sm"
+              holdTime={1200}
+              backgroundColor="#FFFFFF"
+              fillColor="#C86858"
+              textColor="#2A1010"
+              fillTextColor="#FFFFFF"
+              radius={999}
+              icon={<Trash2 size={16} aria-hidden="true" />}
+              doneLabel="ล้างแล้ว"
+              onHold={() => dispatch({ kind: "standingsReset" })}
+            >
+              กดค้างเพื่อล้างตาราง
+            </HoldButton>
           </div>
         )}
 
@@ -276,7 +307,9 @@ export function ScorePad({ state, selfId, dispatch }: {
         tipTextColor="#FDF6EC"
         ariaLabel={`ให้คะแนน ${state.nowPlaying.title}`}
         onChange={(value) => {
-          if (value > 0) dispatch({ kind: "score", value });
+          if (value <= 0) return;
+          dispatch({ kind: "score", value });
+          if (value === SCORE_MAX) celebrate("pop", originOf(document.querySelector(".score-peek")));
         }}
       />
       <small>{mine ? `คุณให้ ${mine} ดาว เปลี่ยนได้จนกว่าเพลงจะจบ` : "แตะดาวเพื่อให้คะแนน"}</small>
@@ -310,23 +343,35 @@ export function ScoreTable({ state, limit }: { state: RoomState; limit?: number 
 export function ScoreBoard({ state }: { state: RoomState }) {
   const running = state.scoring ? scoreAverage(state) : null;
   if (state.lastScore) {
-    const { title, singer, average, count } = state.lastScore;
-    const standing = standingsBoard(state).find((row) => row.name === singer);
-    return (
-      <div className="score-result" aria-live="polite">
-        <Trophy size={26} aria-hidden="true" />
-        <strong>{average}</strong>
-        <span>{title}</span>
-        <small>{singer} · {count} คนให้คะแนน</small>
-        {standing && <small className="score-running">รวมทั้งคืน {standing.points} คะแนน จาก {standing.songs} เพลง</small>}
-      </div>
-    );
+    return <ScoreResultCard state={state} />;
   }
   if (!running) return null;
   return (
     <p className="score-live" aria-live="polite">
       <Star size={16} fill="currentColor" aria-hidden="true" /> {running.average} <small>({running.count} คน)</small>
     </p>
+  );
+}
+
+/** The song that just ended, and what it did to the night's table. A great one gets paper. */
+function ScoreResultCard({ state }: { state: RoomState }) {
+  const result = state.lastScore;
+  // A string, not the object: the host re-sends the room every few seconds and the paper should fly once.
+  const cheer = result && result.average >= 4.5 ? `${result.title}:${result.average}:${result.count}` : "";
+  useEffect(() => {
+    if (cheer) celebrate("cheer");
+  }, [cheer]);
+  if (!result) return null;
+  const { title, singer, average, count } = result;
+  const standing = standingsBoard(state).find((row) => row.name === singer);
+  return (
+    <div className="score-result" aria-live="polite">
+      <Trophy size={26} aria-hidden="true" />
+      <strong><CountUp to={average} duration={1.1} /></strong>
+      <span>{title}</span>
+      <small>{singer} · {count} คนให้คะแนน</small>
+      {standing && <small className="score-running">รวมทั้งคืน {standing.points} คะแนน จาก {standing.songs} เพลง</small>}
+    </div>
   );
 }
 
@@ -382,6 +427,12 @@ function ThemePicker({ theme, dispatch }: { theme: string; dispatch: (intent: Ro
 /** The moment itself, big enough to look up at: the knock-out starting, someone going out, or a champion. */
 export function TournamentFlashCard({ state }: { state: RoomState }) {
   const flash = state.tournament?.flash;
+  const moment = flash ? `${flash.kind}:${flash.name}:${state.tournament?.round}` : "";
+  useEffect(() => {
+    if (!moment) return;
+    if (moment.startsWith("champion")) celebrate("champion");
+    else if (moment.startsWith("start")) celebrate("cheer");
+  }, [moment]);
   if (!flash) return null;
   const copy = {
     start: { title: "ทัวร์นาเมนต์เริ่มแล้ว", line: `${flash.left} คน ร้องคนละ 1 เพลงต่อรอบ`, icon: <Swords size={30} aria-hidden="true" /> },

@@ -919,6 +919,16 @@ select.field { padding-right: 8px; }
   100% { opacity: 0; scale: 0.96; }
 }
 
+/* ---- Little motions: the headline turning over, the big button leaning in ---- */
+
+.hero-rotate { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.25em; }
+.hero-rotate-word {
+  /* Room above and below: Thai tone marks and lower vowels must not be cut by the clip that hides the roll. */
+  display: inline-flex; overflow: hidden; padding: 0.14em 0.2em 0.08em; line-height: 1.15;
+  border-radius: 0.3em; background: var(--gold); color: var(--bark); box-shadow: 4px 4px 0 0 var(--bark);
+}
+.cta-magnet { display: inline-block; }
+
 /* ---- Sing-along: the key sits with the player, because each screen shifts its own sound ---- */
 
 .watch-key {
@@ -1011,6 +1021,7 @@ select.field { padding-right: 8px; }
 .party-row small, .party-check small { color: var(--clay); font-size: 13px; }
 .party-check { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; cursor: pointer; }
 .party-check input { width: 22px; height: 22px; accent-color: var(--amber); }
+.party-check { cursor: default; }
 .party-check span { display: flex; align-items: center; gap: 6px; color: var(--bark); font-weight: 700; }
 .party-check small { grid-column: 2; }
 
