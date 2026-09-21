@@ -13,6 +13,7 @@ import {
 import type { RoomModel } from "./room-model";
 import { ChatToggle, CrossfadeSelect, KeyControlSelect, NotesToggle } from "./room-panels";
 import { VoiceRoomField } from "./voice-room";
+import PeekRating from "./peek-rating";
 import { Art, Dialog } from "./ui";
 
 const QUEUE_ORDER_LABELS: Record<QueueOrder, { name: string; hint: string }> = {
@@ -37,6 +38,9 @@ const SEEDING_LABELS: Record<TourSeeding, { name: string; hint: string }> = {
   score: { name: "ตามคะแนนคืนนี้", hint: "คนคะแนนดีสุดเจอคนคะแนนน้อยสุด เหมือนสายวางมือ" },
   pick: { name: "เลือกตำแหน่งเอง", hint: "สุ่มลำดับคนเลือก แล้วแต่ละคนเลือกช่องจากมือถือ คนท้ายๆ เหลือให้เลือกน้อยลง" },
 };
+
+/** What each star says while someone hovers or drags across them. */
+const SCORE_LABELS = ["พอได้", "ดี", "เพราะ", "เพราะมาก", "สุดยอด"];
 
 function timeLeft(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -253,24 +257,28 @@ export function ScorePad({ state, selfId, dispatch }: {
   dispatch: (intent: RoomIntent) => void;
 }) {
   if (!state.scoring || !state.nowPlaying) return null;
-  const mine = selfId ? state.scores[selfId] : undefined;
+  // A room without realtime has no member id; the room client files this screen's score under "host".
+  const mine = state.scores[selfId ?? "host"];
   return (
     <section className="card score-pad" aria-label="ให้คะแนนเพลงนี้">
       <p className="score-head"><Star size={16} aria-hidden="true" /> ให้คะแนน “{state.nowPlaying.title}”</p>
-      <div className="score-stars">
-        {Array.from({ length: SCORE_MAX }, (_, index) => index + 1).map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={`score-star${mine !== undefined && value <= mine ? " is-on" : ""}`}
-            aria-label={`${value} ดาว`}
-            aria-pressed={mine === value}
-            onClick={() => dispatch({ kind: "score", value })}
-          >
-            <Star size={22} fill={mine !== undefined && value <= mine ? "currentColor" : "none"} aria-hidden="true" />
-          </button>
-        ))}
-      </div>
+      <PeekRating
+        className="score-peek"
+        value={mine ?? 0}
+        count={SCORE_MAX}
+        allowClear={false}
+        labels={SCORE_LABELS}
+        size={36}
+        lift={7}
+        activeColor="#EEC65D"
+        idleColor="#E8C99A"
+        tipColor="#2A1010"
+        tipTextColor="#FDF6EC"
+        ariaLabel={`ให้คะแนน ${state.nowPlaying.title}`}
+        onChange={(value) => {
+          if (value > 0) dispatch({ kind: "score", value });
+        }}
+      />
       <small>{mine ? `คุณให้ ${mine} ดาว เปลี่ยนได้จนกว่าเพลงจะจบ` : "แตะดาวเพื่อให้คะแนน"}</small>
       <ScoreTable state={state} limit={5} />
     </section>
@@ -497,7 +505,7 @@ export function VoteButton({ item, selfId, dispatch }: {
   dispatch: (intent: RoomIntent) => void;
 }) {
   const votes = item.votes?.length ?? 0;
-  const mine = Boolean(selfId && item.votes?.includes(selfId));
+  const mine = Boolean(item.votes?.includes(selfId ?? "host"));
   return (
     <button
       type="button"

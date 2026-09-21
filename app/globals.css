@@ -1034,7 +1034,8 @@ select.field { padding-right: 8px; }
 .spotlight-stage .spotlight-copy strong { font-size: 20px; }
 .spotlight-stage .spotlight-clock { font-size: 24px; }
 
-.score-pad { gap: 8px; padding: 16px; }
+.score-pad { display: grid; justify-items: start; gap: 8px; padding: 16px; }
+.score-peek { margin: 2px 0; }
 .score-head { display: flex; align-items: center; gap: 6px; color: var(--bark); font-weight: 700; }
 .score-pad small { color: var(--clay); font-size: 13px; }
 .score-stars { display: flex; flex-wrap: wrap; gap: 8px; }
