@@ -36,12 +36,16 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
   const orderId = useId();
   const gameId = useId();
   const bombId = useId();
+  const karaoke = isKaraoke(state.mode);
 
   if (!canManage) {
     return (
       <Dialog labelledBy="party-title" onClose={onClose}>
         <h2 id="party-title" className="dialog-title">ตั้งค่าห้อง</h2>
-        <p className="dialog-text">หัวห้องเป็นคนตั้งค่าส่วนนี้ ตอนนี้ห้องใช้{QUEUE_ORDER_LABELS[state.queueOrder].name} และเกม{GAME_LABELS[state.game].name}</p>
+        <p className="dialog-text">
+          หัวห้องเป็นคนตั้งค่าส่วนนี้ ตอนนี้ห้องใช้{QUEUE_ORDER_LABELS[state.queueOrder].name}
+          {isKaraoke(state.mode) && ` และเกม${GAME_LABELS[state.game].name}`}
+        </p>
       </Dialog>
     );
   }
@@ -82,7 +86,7 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           <small>{QUEUE_ORDER_LABELS[state.queueOrder].hint}</small>
         </div>
 
-        <div className="party-row">
+        {karaoke && <div className="party-row">
           <label htmlFor={gameId}><Bomb size={16} aria-hidden="true" /> เกมในห้อง</label>
           <select
             id={gameId}
@@ -95,9 +99,9 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
             ))}
           </select>
           <small>{GAME_LABELS[state.game].hint}</small>
-        </div>
+        </div>}
 
-        {state.game === "bomb" && (
+        {karaoke && state.game === "bomb" && (
           <div className="party-row">
             <label htmlFor={bombId}><Timer size={16} aria-hidden="true" /> ให้เวลาหาเพลง</label>
             <select
@@ -116,7 +120,7 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           </div>
         )}
 
-        <label className="party-check">
+        {karaoke && <label className="party-check">
           <input
             type="checkbox"
             checked={state.scoring}
@@ -124,9 +128,9 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           />
           <span><Star size={16} aria-hidden="true" /> ให้คะแนนเพลงที่กำลังเล่น</span>
           <small>ทุกคนให้ดาวได้คนละครั้ง คะแนนของแต่ละเพลงสะสมเป็นตารางทั้งคืน และปล่อยให้ระเบิดไมค์หมดเวลาจะโดนหัก 1 คะแนน</small>
-        </label>
+        </label>}
 
-        <div className="party-row">
+        {karaoke && <div className="party-row">
           <span className="party-row-title"><Swords size={16} aria-hidden="true" /> ทัวร์นาเมนต์</span>
           {state.tournament ? (
             <>
@@ -146,9 +150,9 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
               </small>
             </>
           )}
-        </div>
+        </div>}
 
-        {state.standings.length > 0 && (
+        {karaoke && state.standings.length > 0 && (
           <div className="party-row">
             <span className="party-row-title"><Trophy size={16} aria-hidden="true" /> ตารางคะแนนคืนนี้</span>
             <ScoreTable state={state} />

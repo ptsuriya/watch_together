@@ -358,7 +358,14 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return notes === state.notes ? state : { ...state, notes };
     }
     case "mode":
-      return intent.mode === state.mode ? state : { ...state, mode: intent.mode, key: 0, vocalCut: 0, eq: { ...FLAT_EQ } };
+      if (intent.mode === state.mode) return state;
+      return {
+        ...state, mode: intent.mode, key: 0, vocalCut: 0, eq: { ...FLAT_EQ },
+        // Watching together is not singing: the games, the scoring and the knock-out go quiet outside karaoke.
+        ...(isKaraoke(intent.mode)
+          ? {}
+          : { game: "off" as PartyGame, spotlight: null, scoring: false, scores: {}, lastScore: null, tournament: null }),
+      };
     case "notesOn":
       return intent.enabled === state.notesOn ? state : { ...state, notesOn: intent.enabled };
     case "notesShared":
@@ -399,16 +406,18 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return value === state.queueOrder ? state : { ...state, queueOrder: value };
     }
     case "game": {
+      if (!isKaraoke(state.mode)) return state;
       const value = PARTY_GAMES.find((option) => option === intent.value) ?? "off";
       if (value === state.game) return state;
       return { ...state, game: value, spotlight: value === "bomb" ? state.spotlight : null };
     }
     case "bombSeconds": {
+      if (!isKaraoke(state.mode)) return state;
       const seconds = BOMB_SECOND_OPTIONS.find((option) => option === intent.seconds) ?? BOMB_SECONDS;
       return seconds === state.bombSeconds ? state : { ...state, bombSeconds: seconds };
     }
     case "scoring": {
-      if (intent.enabled === state.scoring) return state;
+      if (!isKaraoke(state.mode) || intent.enabled === state.scoring) return state;
       return { ...state, scoring: intent.enabled, scores: {}, lastScore: null };
     }
     case "vote": {
@@ -427,7 +436,7 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return { ...state, scores: { ...state.scores, [intent.memberId]: value } };
     }
     case "bomb": {
-      if (!intent.memberId || !intent.name) return state;
+      if (!isKaraoke(state.mode) || !intent.memberId || !intent.name) return state;
       return { ...state, spotlight: { memberId: intent.memberId, name: intent.name, seconds: intent.seconds ?? BOMB_SECONDS } };
     }
     case "spotlightOff": {
@@ -447,7 +456,7 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
         return { ...state, tournament: null, crossfade: parseCrossfade(state.tournament.crossfadeBefore) };
       }
       const players = (intent.players ?? []).slice(0, MAX_PLAYERS);
-      if (players.length < 2) return state;
+      if (players.length < 2 || !isKaraoke(state.mode)) return state;
       // A knock-out is decided by the room's scores, so it turns scoring on with it — and songs should end, not
       // melt into the next singer's, so the crossfade steps aside until it is over.
       return {
