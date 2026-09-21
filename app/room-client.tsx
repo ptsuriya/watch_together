@@ -183,7 +183,7 @@ export default function RoomClient({
       else if (intent.kind === "kick") commit({ ...intent, by: isHostRef.current ? "host" : "cohost" });
       else if (intent.kind === "bomb") startBombRef.current();
       else if (intent.kind === "tournament" && intent.action === "start") {
-        commit({ kind: "tournament", action: "start", players: playerNamesRef.current() });
+        commit({ ...intent, players: playerNamesRef.current() });
       } else if (intent.kind === "vote" || intent.kind === "score") commit({ ...intent, memberId: selfIdRef.current ?? "host" });
       else commit(intent);
       return;
@@ -392,7 +392,8 @@ export default function RoomClient({
           return;
         }
         if (intent.kind === "tournament" && intent.action === "start") {
-          commit({ kind: "tournament", action: "start", players: playerNames() });
+          // The shape of the knock-out is the sender's to choose; who is in it is not.
+          commit({ ...intent, players: playerNames() });
           return;
         }
         // Voting and rating only count when the room knows who sent them.
