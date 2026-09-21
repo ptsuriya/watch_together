@@ -9,7 +9,7 @@ import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
-import { EqControl, KeyControl, RoomQr, VocalCutSelect } from "./room-panels";
+import { EqControl, KeyControl, MemberList, RoomQr, VocalCutSelect } from "./room-panels";
 import type { RoomModel, Toast } from "./room-model";
 import { Art, ToastStack } from "./ui";
 import { VoiceRoomCard } from "./voice-room";
@@ -186,6 +186,21 @@ export function TvRoom({
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
           </section>
         )}
+
+        <section className="card side-members" aria-labelledby="tv-members-title">
+          <div className="card-head">
+            <h2 id="tv-members-title">สมาชิก <span className="count">{model.members.length || 1}</span></h2>
+          </div>
+          <MemberList
+            members={model.members}
+            selfId={selfId}
+            selfName={selfName}
+            selfIsHost={model.isHost}
+            cohosts={state.cohosts}
+            onToggleCohost={model.isHost ? (memberId, enabled) => dispatch({ kind: "cohost", memberId, enabled }) : undefined}
+            onKick={canManage ? (member) => dispatch({ kind: "kick", memberId: member.id }) : undefined}
+          />
+        </section>
 
         {state.voiceRoom && (
           <section className="card side-voice" aria-label="ห้องเสียง">

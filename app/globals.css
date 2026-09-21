@@ -434,7 +434,10 @@ select.field { padding-right: 8px; }
 @media (max-width: 480px) {
   .room-code { padding: 4px 8px; font-size: 12px; }
   /* An icon on its own looked like a button nobody could press; the guest screens name the mode in words instead. */
-  .mode-pill { display: none; }
+  .mode-pill:not(.is-button) { display: none; }
+  /* Whoever runs the room keeps the control on a phone, down to its icon. */
+  .mode-pill.is-button { margin-left: auto; padding: 5px 10px; }
+  .mode-pill.is-button .mode-pill-label { display: none; }
 }
 
 .room-main { display: flex; flex: 1; flex-direction: column; min-height: 0; }
@@ -930,6 +933,13 @@ select.field { padding-right: 8px; }
 }
 .watch-key .helper-note { margin: 0; }
 .helper-note.is-warn { color: var(--amber-deep); }
+
+.side-members { display: grid; gap: 10px; padding: 16px; }
+.side-members .member-list { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; }
+.icon-btn.is-danger { color: var(--terra-deep); }
+.icon-btn.is-danger:hover { background: var(--sand); }
+.mode-pill.is-button { cursor: pointer; font-family: inherit; }
+.mode-pill.is-button:hover { background: var(--honey); }
 
 .side-voice, .remote-voice { display: grid; padding: 16px; }
 .voice-room { display: grid; gap: 8px; }

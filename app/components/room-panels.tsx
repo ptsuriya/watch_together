@@ -2,8 +2,8 @@
 
 import { QRCodeSVG } from "qrcode.react";
 import {
-  AArrowDown, AArrowUp, Check, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, MicOff, MicVocal, Minus, MonitorPlay,
-  Plus, QrCode, RotateCcw, SlidersHorizontal, Tv,
+  AArrowDown, AArrowUp, Check, ChevronDown, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, MicOff, MicVocal, Minus, MonitorPlay,
+  Plus, QrCode, RotateCcw, SlidersHorizontal, Tv, UserMinus,
   MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
@@ -32,17 +32,17 @@ export function RoomHeader({
   onHome,
   onInvite,
   onRename,
-  onModeChange,
+  onOpenModes,
   onFullscreen,
 }: {
   model: RoomModel;
   onHome: () => void;
   onInvite: () => void;
   onRename: () => void;
-  onModeChange: (mode: RoomMode) => void;
+  onOpenModes: () => void;
   onFullscreen?: () => void;
 }) {
-  const { state, isHost, status, roomCode } = model;
+  const { state, status, roomCode } = model;
   const ModeIcon = MODE_ICONS[state.mode];
   return (
     <header className="room-header">
@@ -52,27 +52,12 @@ export function RoomHeader({
         <span className="room-code-text">{roomCode}</span>
         <span className="room-status">{STATUS_TEXT[status]}</span>
       </span>
-      {isHost ? (
-        <div className="mode-switch" role="radiogroup" aria-label="โหมดของห้อง">
-          {(Object.keys(MODE_LABELS) as RoomMode[]).map((mode) => {
-            const Icon = MODE_ICONS[mode];
-            return (
-              <button
-                key={mode}
-                type="button"
-                role="radio"
-                aria-checked={state.mode === mode}
-                aria-label={MODE_LABELS[mode].name}
-                className={state.mode === mode ? "is-active" : undefined}
-                onClick={() => onModeChange(mode)}
-                title={MODE_LABELS[mode].description}
-              >
-                <Icon size={16} aria-hidden="true" />
-                <span>{MODE_LABELS[mode].short}</span>
-              </button>
-            );
-          })}
-        </div>
+      {model.canManage ? (
+        <button type="button" className="pill mode-pill is-button" onClick={onOpenModes}>
+          <ModeIcon size={16} aria-hidden="true" />
+          <span className="mode-pill-label">{MODE_LABELS[state.mode].name}</span>
+          <ChevronDown size={15} aria-hidden="true" />
+        </button>
       ) : (
         <span className="pill mode-pill" title={`โหมด${MODE_LABELS[state.mode].name}`}>
           <ModeIcon size={16} aria-hidden="true" /> <span className="mode-pill-label">{MODE_LABELS[state.mode].name}</span>
@@ -95,7 +80,7 @@ export function RoomHeader({
   );
 }
 
-export function MemberList({ members, selfId, selfName, selfIsHost, cohosts = [], onToggleCohost }: {
+export function MemberList({ members, selfId, selfName, selfIsHost, cohosts = [], onToggleCohost, onKick }: {
   members: RoomMember[];
   selfId: string | null;
   selfName: string;
@@ -103,6 +88,8 @@ export function MemberList({ members, selfId, selfName, selfIsHost, cohosts = []
   cohosts?: string[];
   /** Only the host gets this: hand the run of the room to someone, or take it back. */
   onToggleCohost?: (memberId: string, enabled: boolean) => void;
+  /** Whoever runs the room can show someone the door; the host is never on that list. */
+  onKick?: (member: RoomMember) => void;
 }) {
   // Presence has not arrived yet (or the room runs without realtime): show this person alone.
   const list = members.length ? members : [{ id: selfId ?? "self", name: selfName, isHost: selfIsHost }];
@@ -118,6 +105,17 @@ export function MemberList({ members, selfId, selfName, selfIsHost, cohosts = []
             {(member.id === selfId || !members.length) && <em className="tag">คุณ</em>}
             {member.isHost && <span className="host-badge"><Crown size={14} aria-hidden="true" /> โฮสต์</span>}
             {!member.isHost && cohost && <span className="host-badge is-cohost"><ShieldCheck size={14} aria-hidden="true" /> หัวห้องร่วม</span>}
+            {onKick && !member.isHost && member.id !== selfId && (
+              <button
+                type="button"
+                className="icon-btn is-danger"
+                onClick={() => onKick(member)}
+                title={`นำ ${member.name} ออกจากห้อง`}
+                aria-label={`นำ ${member.name} ออกจากห้อง`}
+              >
+                <UserMinus size={16} aria-hidden="true" />
+              </button>
+            )}
             {onToggleCohost && !member.isHost && (
               <button
                 type="button"
@@ -488,6 +486,45 @@ export function RoomQr({ url, size }: { url: string; size: number }) {
   );
 }
 
+/** Changing the room's mode, described rather than guessed from an icon. */
+export function ModeDialog({ mode, onPick, onClose }: {
+  mode: RoomMode;
+  onPick: (mode: RoomMode) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog labelledBy="mode-title" onClose={onClose}>
+      <h2 id="mode-title" className="dialog-title">โหมดของห้อง</h2>
+      <p className="dialog-text">เปลี่ยนได้ตลอด ทุกคนในห้องจะเปลี่ยนตามทันที เพลงที่เล่นอยู่ไม่หลุด</p>
+      <div className="mode-list">
+        {(Object.keys(MODE_LABELS) as RoomMode[]).map((option) => {
+          const Icon = MODE_ICONS[option];
+          const active = option === mode;
+          return (
+            <button
+              key={option}
+              type="button"
+              className={`mode-option${active ? " is-active" : ""}`}
+              aria-current={active}
+              onClick={() => {
+                if (!active) onPick(option);
+                onClose();
+              }}
+            >
+              <span className="mode-icon"><Icon size={22} aria-hidden="true" /></span>
+              <span className="mode-copy">
+                <strong>{MODE_LABELS[option].name}</strong>
+                <small>{MODE_LABELS[option].description}</small>
+              </span>
+              <span className="mode-check" aria-hidden="true">{active && <Check size={16} strokeWidth={3} />}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Dialog>
+  );
+}
+
 export function InviteDialog({ model, onClose }: { model: RoomModel; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
 
@@ -536,7 +573,14 @@ export function InviteDialog({ model, onClose }: { model: RoomModel; onClose: ()
           selfIsHost={model.isHost}
           cohosts={model.state.cohosts}
           onToggleCohost={model.isHost ? (memberId, enabled) => model.dispatch({ kind: "cohost", memberId, enabled }) : undefined}
+          onKick={model.canManage ? (member) => model.dispatch({ kind: "kick", memberId: member.id }) : undefined}
         />
+        {model.isHost && model.state.banned.length > 0 && (
+          <p className="invite-hint">
+            นำออกจากห้องแล้ว {model.state.banned.length} คน
+            <button type="button" className="text-btn" onClick={() => model.dispatch({ kind: "unban" })}>ให้กลับเข้าได้ทุกคน</button>
+          </p>
+        )}
         {model.isHost && (
           <p className="invite-hint">
             กดโล่ข้างชื่อเพื่อให้เป็นหัวห้องร่วม คนนั้นจะจัดคิวและตั้งค่าห้องได้เหมือนคุณ ยกเว้นการแต่งตั้งคนอื่น

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  createRoomState, hasContent, hasOwnScreens, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
+  createRoomState, hasContent, hasOwnScreens, isBanned, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
   sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS, TOURNAMENT_FLASH_MS,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
@@ -17,9 +17,9 @@ import { KaraokeSetupDialog } from "./components/key-helper";
 import { PartyDialog } from "./components/party";
 import { useSyncOffset } from "./components/sync-offset";
 import { BURST_LIFETIME_MS, type EmojiBurst, EmojiRain, makeBurst } from "./components/reactions";
-import { RemoteRoom, WaitingRoom } from "./components/remote-room";
+import { KickedRoom, RemoteRoom, WaitingRoom } from "./components/remote-room";
 import type { AddVideoResult, RoomModel, Toast } from "./components/room-model";
-import { InviteDialog, NameDialog, NotesDialog, RoomHeader } from "./components/room-panels";
+import { InviteDialog, ModeDialog, NameDialog, NotesDialog, RoomHeader } from "./components/room-panels";
 import { TvRoom } from "./components/tv-room";
 import { Art, ToastStack } from "./components/ui";
 import { WatchRoom } from "./components/watch-room";
@@ -37,7 +37,7 @@ const MAX_BURSTS = 8;
 const CHAT_COOLDOWN_MS = 1500;
 const SKIP_AFTER_ERROR_MS = 2500;
 
-type DialogKind = "invite" | "name" | "notes" | "karaoke" | "party";
+type DialogKind = "invite" | "name" | "notes" | "karaoke" | "party" | "modes";
 
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -76,6 +76,8 @@ export default function RoomClient({
   const [resume, setResume] = useState<PlaybackResume>();
   const [listenerName, setListenerName] = useState("");
   const [dialog, setDialog] = useState<DialogKind | null>(null);
+  /** This screen was shown the door: it stops following the room and says so. */
+  const [kicked, setKicked] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [keyFlash, setKeyFlash] = useState(0);
   const [bursts, setBursts] = useState<EmojiBurst[]>([]);
@@ -177,7 +179,8 @@ export default function RoomClient({
   const dispatch = useCallback((intent: RoomIntent) => {
     if (isHostRef.current || !realtimeConfigured) {
       // The room, not the sender, decides who the mic lands on and whose vote this is.
-      if (intent.kind === "bomb") startBombRef.current();
+      if (intent.kind === "kick") commit({ ...intent, by: isHostRef.current ? "host" : "cohost" });
+      else if (intent.kind === "bomb") startBombRef.current();
       else if (intent.kind === "tournament" && intent.action === "start") {
         commit({ kind: "tournament", action: "start", players: playerNamesRef.current() });
       } else if (intent.kind === "vote" || intent.kind === "score") commit({ ...intent, memberId: selfIdRef.current ?? "host" });
@@ -371,6 +374,7 @@ export default function RoomClient({
         const state = stateRef.current;
         const fromId = typeof event.fromId === "string" ? event.fromId : undefined;
         const fromName = sanitizeChat(event.from).slice(0, 32);
+        if (isBanned(state, fromId)) return;
         const manager = isManager(state, fromId);
         // Running the queue and the room's settings is for the host and the co-hosts they picked.
         if (MANAGER_INTENTS.some((kind) => kind === intent.kind) && !manager) return;
@@ -380,6 +384,10 @@ export default function RoomClient({
         if (intent.kind === "key" && !manager && !mayChangeKey(state, fromName)) return;
         if (intent.kind === "bomb") {
           startBomb();
+          return;
+        }
+        if (intent.kind === "kick") {
+          commit({ kind: "kick", memberId: intent.memberId, by: "cohost" });
           return;
         }
         if (intent.kind === "tournament" && intent.action === "start") {
@@ -426,6 +434,10 @@ export default function RoomClient({
         if (isHostRef.current) return;
         const next = sanitizeState(event.state);
         if (!next) return;
+        if (isBanned(next, selfIdRef.current)) {
+          setKicked(true);
+          return;
+        }
         const current = stateRef.current;
         if (next.session !== current.session && !hasContent(next) && hasContent(current)) {
           // The host reloaded and lost the room. Hand it back instead of wiping it here.
@@ -648,7 +660,14 @@ export default function RoomClient({
   }
 
   function changeMode(mode: RoomMode) {
-    if (realtimeConfigured && !isHost) return;
+    if (realtimeConfigured && !canManage) {
+      pushToast("เฉพาะหัวห้องและหัวห้องร่วมเปลี่ยนโหมดได้");
+      return;
+    }
+    if (!isHost) {
+      dispatch({ kind: "mode", mode });
+      return;
+    }
     const current = stateRef.current;
     if (current.nowPlaying && hasOwnScreens(mode) !== hasOwnScreens(current.mode)) {
       // The other layout builds a new player; carry on from the same moment.
@@ -726,7 +745,8 @@ export default function RoomClient({
   ) : null;
 
   let view;
-  if (waiting) view = <WaitingRoom status={status} hostOnline={hostOnline} roomCode={roomCode} />;
+  if (kicked) view = <KickedRoom roomCode={roomCode} onHome={returnHome} />;
+  else if (waiting) view = <WaitingRoom status={status} hostOnline={hostOnline} roomCode={roomCode} />;
   else if (hasOwnScreens(state.mode)) {
     view = (
       <WatchRoom
@@ -780,7 +800,7 @@ export default function RoomClient({
         onHome={returnHome}
         onInvite={() => setDialog("invite")}
         onRename={() => setDialog("name")}
-        onModeChange={changeMode}
+        onOpenModes={() => setDialog("modes")}
         onFullscreen={tvScreen ? toggleFullscreen : undefined}
       />
       {state.chat && hasOwnScreens(state.mode) && <ChatFlights messages={messages} variant="page" />}
@@ -799,6 +819,7 @@ export default function RoomClient({
         />
       )}
       {dialog === "party" && <PartyDialog model={model} onClose={() => setDialog(null)} />}
+      {dialog === "modes" && <ModeDialog mode={state.mode} onPick={changeMode} onClose={() => setDialog(null)} />}
       {dialog === "notes" && (
         <NotesDialog notes={state.notes} canManage={canManage} shared={state.notesShared} dispatch={dispatch} onClose={() => setDialog(null)} />
       )}

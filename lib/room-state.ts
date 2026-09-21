@@ -71,6 +71,8 @@ export type RoomState = {
   keyControl: KeyControl;
   /** Member ids the host has given the run of the room: queue and settings, everything but handing out this right. */
   cohosts: string[];
+  /** Member ids that were shown the door. Their own page leaves, and the host stops listening to them. */
+  banned: string[];
   /** How many songs one guest may keep in the queue at a time; 0 lifts the limit. Hosts and co-hosts are free. */
   queueLimit: number;
   /** Which song comes next: the top of the queue, a random one, or the one with the most votes. */
@@ -177,6 +179,7 @@ function addStanding(standings: Standing[], name: string, change: Partial<Standi
 }
 
 export const MAX_COHOSTS = 10;
+export const MAX_BANNED = 40;
 
 /** 0 resets to the original key; the rest move a whole or half semitone. */
 export type KeyStep = -1 | -0.5 | 0 | 0.5 | 1;
@@ -207,6 +210,9 @@ export type RoomIntent =
   | { kind: "vocalCut"; amount: number }
   | { kind: "eq"; eq: RoomEq }
   | { kind: "cohost"; memberId: string; enabled: boolean }
+  /** Show someone the door, or open it again for everyone. */
+  | { kind: "kick"; memberId: string; by?: "host" | "cohost" }
+  | { kind: "unban" }
   | { kind: "queueLimit"; count: number }
   | { kind: "queueOrder"; value: QueueOrder }
   | { kind: "game"; value: PartyGame }
@@ -228,7 +234,7 @@ export type RoomIntent =
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
-  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "vocalCut", "eq", "voiceRoom",
+  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "vocalCut", "eq", "voiceRoom", "kick", "unban",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -236,7 +242,7 @@ export type GuestIntent = Extract<
   RoomIntent,
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
-    | "bomb" | "standingsReset" | "tournament" | "vocalCut" | "eq" | "voiceRoom" }
+    | "bomb" | "standingsReset" | "tournament" | "vocalCut" | "eq" | "voiceRoom" | "kick" | "unban" }
 >;
 
 export type RoomEvent =
@@ -288,7 +294,7 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
     vocalCut: 0, eq: { ...FLAT_EQ }, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
-    voiceRoom: "", cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
+    voiceRoom: "", cohosts: [], banned: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
     standings: [], tournament: null, hostOffset: 0,
   };
@@ -404,6 +410,17 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
         : state.cohosts.filter((id) => id !== intent.memberId);
       return { ...state, cohosts };
     }
+    case "kick": {
+      if (!intent.memberId || state.banned.includes(intent.memberId)) return state;
+      if (intent.by && intent.by !== "host" && state.cohosts.includes(intent.memberId)) return state;
+      return {
+        ...state,
+        banned: [...state.banned, intent.memberId].slice(-MAX_BANNED),
+        cohosts: state.cohosts.filter((id) => id !== intent.memberId),
+      };
+    }
+    case "unban":
+      return state.banned.length === 0 ? state : { ...state, banned: [] };
     case "queueLimit": {
       const count = QUEUE_LIMITS.find((option) => option === intent.count) ?? 0;
       return count === state.queueLimit ? state : { ...state, queueLimit: count };
@@ -572,6 +589,10 @@ function parseKeyControl(value: unknown): KeyControl {
   return KEY_CONTROL_OPTIONS.find((option) => option === value) ?? "everyone";
 }
 
+export function isBanned(state: RoomState, memberId: string | null | undefined) {
+  return Boolean(memberId) && state.banned.includes(memberId as string);
+}
+
 export function isManager(state: RoomState, memberId: string | null | undefined) {
   return Boolean(memberId) && state.cohosts.includes(memberId as string);
 }
@@ -665,6 +686,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     keyControl: parseKeyControl(value.keyControl),
     voiceRoom: parseVoiceRoom(value.voiceRoom),
     cohosts: Array.isArray(value.cohosts) ? memberIds(value.cohosts).slice(0, MAX_COHOSTS) : [],
+    banned: Array.isArray(value.banned) ? memberIds(value.banned).slice(0, MAX_BANNED) : [],
     queueLimit: QUEUE_LIMITS.find((option) => option === value.queueLimit) ?? 0,
     queueOrder: QUEUE_ORDERS.find((option) => option === value.queueOrder) ?? "line",
     game: PARTY_GAMES.find((option) => option === value.game) ?? "off",
@@ -820,6 +842,12 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
       return typeof value.amount === "number" ? { kind: "vocalCut", amount: value.amount } : null;
     case "voiceRoom":
       return typeof value.address === "string" ? { kind: "voiceRoom", address: value.address } : null;
+    case "kick": {
+      const memberId = text(value.memberId, 64);
+      return memberId ? { kind: "kick", memberId } : null;
+    }
+    case "unban":
+      return { kind: "unban" };
     case "eq":
       return { kind: "eq", eq: parseEq(value.eq) };
     case "vote": {

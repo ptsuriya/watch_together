@@ -117,6 +117,7 @@ export function WatchRoom({
           selfIsHost={isHost}
           cohosts={state.cohosts}
           onToggleCohost={isHost ? (memberId, enabled) => dispatch({ kind: "cohost", memberId, enabled }) : undefined}
+          onKick={canManage ? (member) => dispatch({ kind: "kick", memberId: member.id }) : undefined}
         />
       </section>
 

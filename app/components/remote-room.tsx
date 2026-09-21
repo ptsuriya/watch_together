@@ -139,6 +139,18 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
   );
 }
 
+/** The host showed this screen the door. It stops following the room and offers the way out. */
+export function KickedRoom({ roomCode, onHome }: { roomCode: string; onHome: () => void }) {
+  return (
+    <div className="waiting">
+      <Art name="sleeping" className="waiting-art" sizes="140px" priority />
+      <h1>โฮสต์นำคุณออกจากห้องแล้ว</h1>
+      <p>ห้อง {roomCode} ไม่รับคำขอจากเครื่องนี้แล้ว ถ้าเป็นความเข้าใจผิด ลองคุยกับโฮสต์แล้วขอลิงก์ใหม่อีกครั้ง</p>
+      <button type="button" className="btn btn-honey" onClick={onHome}>กลับหน้าแรก</button>
+    </div>
+  );
+}
+
 /** A guest shows this until the host sends the room, since only the host knows the mode, queue and video. */
 export function WaitingRoom({ status, hostOnline, roomCode }: { status: RealtimeStatus; hostOnline: boolean; roomCode: string }) {
   const waitingForHost = status === "connected" && !hostOnline;
