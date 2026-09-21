@@ -23,6 +23,8 @@ Songs crossfade into each other in every mode.
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 5. Redeploy. Do not use a Supabase `service_role` or secret key in Vercel browser variables.
 
+`YOUTUBE_API_KEY` is optional: with a YouTube Data API v3 key the queue box also takes a playlist link and adds every song in it (up to 50, skipping ones already queued and entries that are private or deleted). Without the key, single links work as before and a playlist says so. Mixes and radio lists (`RD…`) have no fixed contents to read, so they are refused by name.
+
 If you use the Vercel Supabase Integration, its existing `SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are supported automatically. The application works visually without either configuration, but realtime rooms remain disabled.
 
 ## Local development

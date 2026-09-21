@@ -63,7 +63,7 @@ export function AddVideoForm({
           className="field"
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          placeholder="วางลิงก์ YouTube ที่นี่"
+          placeholder="วางลิงก์ YouTube หรือเพลย์ลิสต์"
           inputMode="url"
           autoComplete="off"
           enterKeyHint="send"

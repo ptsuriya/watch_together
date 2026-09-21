@@ -10,7 +10,7 @@ import {
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
 import { isSupabaseConfigured } from "../lib/supabase";
-import { lookupVideo, parseYouTubeId } from "../lib/youtube";
+import { lookupPlaylist, lookupVideo, parsePlaylistId, parseYouTubeId } from "../lib/youtube";
 import { HomeScreen } from "./components/home-screen";
 import { ChatFlights, CHAT_FLIGHT_MS, CHAT_LANES, CHAT_LOG_SIZE, type ChatMessage, pickFlightTop } from "./components/chat";
 import { KaraokeSetupDialog } from "./components/key-helper";
@@ -266,8 +266,57 @@ export default function RoomClient({
     playerNamesRef.current = playerNames;
   }, [playerNames, startBomb]);
 
+  /** Puts one song in the room, by whichever road this screen has: straight in, or asked of the host. */
+  const queueItem = useCallback((item: QueueItem) => {
+    if (isHostRef.current || !realtimeConfigured) {
+      commit({ kind: "add", item: dressItem(item, selfIdRef.current ?? undefined) });
+      return;
+    }
+    broadcastRef.current({
+      kind: "intent",
+      intent: { kind: "add", item },
+      from: selfNameRef.current,
+      fromId: selfIdRef.current ?? undefined,
+    });
+  }, [commit, dressItem, realtimeConfigured]);
+
+  /** A playlist link: every song it holds, in its own order, one after another. */
+  const addPlaylist = useCallback(async (list: string): Promise<AddVideoResult> => {
+    const lookup = await lookupPlaylist(list);
+    if (!lookup.ok) {
+      const why = {
+        mix: "ลิงก์นี้เป็นมิกซ์ที่ YouTube สร้างให้เฉพาะคนดู อ่านรายการไม่ได้ ลองเพลย์ลิสต์ปกติ",
+        missing: "ไม่พบเพลย์ลิสต์นี้ อาจเป็นเพลย์ลิสต์ส่วนตัว",
+        "no-key": "เว็บนี้ยังไม่ได้ตั้งค่ากุญแจ YouTube API เลยอ่านเพลย์ลิสต์ไม่ได้ วางลิงก์เพลงทีละเพลงได้ตามปกติ",
+        lookup: "อ่านเพลย์ลิสต์ไม่สำเร็จ ลองใหม่อีกครั้ง",
+      }[lookup.reason];
+      return { ok: false, message: why };
+    }
+    if (lookup.items.length === 0) return { ok: false, message: "เพลย์ลิสต์นี้ไม่มีเพลงที่เล่นได้" };
+
+    const taken = new Set([stateRef.current.nowPlaying?.videoId, ...stateRef.current.queue.map((item) => item.videoId)]);
+    let added = 0;
+    for (const song of lookup.items) {
+      if (taken.has(song.videoId)) continue;
+      taken.add(song.videoId);
+      added += 1;
+      queueItem({
+        id: crypto.randomUUID(),
+        videoId: song.videoId,
+        title: song.title,
+        channel: song.channel,
+        addedBy: selfNameRef.current,
+      });
+    }
+    if (added === 0) return { ok: false, message: "เพลงในเพลย์ลิสต์นี้อยู่ในคิวหมดแล้ว" };
+    return { ok: true, message: `เพิ่มจากเพลย์ลิสต์ ${added} เพลง` };
+  }, [queueItem]);
+
   const addVideo = useCallback(async (input: string): Promise<AddVideoResult> => {
     const videoId = parseYouTubeId(input);
+    const list = parsePlaylistId(input);
+    // A link with both a video and a list is a song being shared from a playlist: the song is what was meant.
+    if (list && !videoId) return addPlaylist(list);
     if (!videoId) return { ok: false, message: "ไม่พบลิงก์ YouTube ในข้อความนี้" };
     const lookup = await lookupVideo(videoId);
     if (!lookup.playable) {
@@ -301,7 +350,7 @@ export default function RoomClient({
       fromId: selfIdRef.current ?? undefined,
     });
     return { ok: true, message: "ส่งแล้ว รอเข้าคิว…" };
-  }, [commit, dressItem, realtimeConfigured]);
+  }, [addPlaylist, commit, dressItem, realtimeConfigured]);
 
   const confirmPendingAdds = useCallback((next: RoomState) => {
     for (const id of pendingAddsRef.current) {

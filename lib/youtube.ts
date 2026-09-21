@@ -28,6 +28,39 @@ export function parseYouTubeId(input: string): string | null {
   return isVideoId(id) ? id : null;
 }
 
+/** The playlist id in a link, if there is one worth reading. */
+export function parsePlaylistId(input: string): string | null {
+  const candidate = input.trim().match(/https?:\/\/\S+/i)?.[0] ?? input.trim();
+  let url: URL;
+  try {
+    url = new URL(/^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`);
+  } catch {
+    return null;
+  }
+  if (!/(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(url.hostname)) return null;
+  const list = url.searchParams.get("list");
+  return list && /^[\w-]{2,64}$/.test(list) ? list : null;
+}
+
+export type PlaylistItem = { videoId: string; title: string; channel: string };
+export type PlaylistLookup =
+  | { ok: true; items: PlaylistItem[] }
+  | { ok: false; reason: "mix" | "missing" | "no-key" | "lookup" };
+
+/** The songs in a public playlist, or why the room could not read it. */
+export async function lookupPlaylist(list: string): Promise<PlaylistLookup> {
+  try {
+    const response = await fetch(`/api/playlist?list=${encodeURIComponent(list)}`, { signal: AbortSignal.timeout(8000) });
+    const data = (await response.json()) as { items?: PlaylistItem[]; error?: string };
+    if (response.ok && Array.isArray(data.items)) return { ok: true, items: data.items };
+    const reason = data.error;
+    if (reason === "mix" || reason === "missing" || reason === "no-key") return { ok: false, reason };
+    return { ok: false, reason: "lookup" };
+  } catch {
+    return { ok: false, reason: "lookup" };
+  }
+}
+
 export type VideoLookup =
   | { playable: true; title?: string; channel?: string }
   | { playable: false; reason: "embed" | "missing" };
