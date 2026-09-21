@@ -40,7 +40,7 @@ export function sendToHelper(
     | { type: "hello" }
     | { type: "key"; semitones: number }
     | { type: "vocals"; amount: number }
-    | { type: "eq"; low: number; mid: number; high: number },
+    | ({ type: "eq" } & Record<"low" | "lowMid" | "mid" | "highMid" | "high", number>),
 ) {
   frame?.contentWindow?.postMessage({ source: ROOM_SOURCE, ...message }, EMBED_ORIGIN);
 }
@@ -51,7 +51,7 @@ export type HelperStatus = "checking" | "ready" | "missing" | "unsupported" | "b
  * The version the room needs. An extension loaded from a folder never updates itself — only a store can do that —
  * so the room watches the version it hears and asks the person to load the new zip over it.
  */
-export const HELPER_MIN_VERSION = "1.2.0";
+export const HELPER_MIN_VERSION = "1.3.0";
 
 function olderThan(version: string, want: string) {
   const left = version.split(".").map(Number);

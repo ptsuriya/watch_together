@@ -19,7 +19,11 @@ the video through Web Audio into [Signalsmith Stretch](https://signalsmith-audio
 - **Vocal cut (1.2.0)** — the room can ask for half or all of the centre channel to be subtracted (L−R), the old karaoke
   trick for thinning a guide vocal. It is mono by nature and takes the centred bass and kick with it, which is why the
   room offers half as well as all. Songs that do not mix the voice dead centre barely change.
-- Neither touches a YouTube ad: while the player says an ad is on, the audio goes straight through.
+- **Tone (1.3.0)** — five bands (90 Hz shelf, 250 Hz, 1 kHz, 3 kHz, 8 kHz shelf, ±8 dB) that the room sets from
+  one-tap presets or sliders, followed by a limiter just under full scale whenever the audio is processed at all, so a
+  bass boost or the lift on L−R bends the peaks down instead of clipping. A 1.2 helper hears only the low, mid and high
+  bands, which is why the room asks for 1.3.
+- None of it touches a YouTube ad: while the player says an ad is on, the audio goes straight through.
 
 ## Install for testing
 

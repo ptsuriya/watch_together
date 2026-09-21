@@ -4,7 +4,7 @@
 //   room -> embed: { source: "kuma-listening-party", type: "hello" }
 //   room -> embed: { source: "kuma-listening-party", type: "key", semitones: -12..12 }
 //   room -> embed: { source: "kuma-listening-party", type: "vocals", amount: 0..1 }   (centre-channel removal)
-//   room -> embed: { source: "kuma-listening-party", type: "eq", low: -8..8, mid: -8..8, high: -8..8 }  (dB)
+//   room -> embed: { source: "kuma-listening-party", type: "eq", low, lowMid, mid, highMid, high: -8..8 }  (dB)
 //   room -> embed: { source: "kuma-listening-party", type: "probe" }   (measures the output level, for diagnostics)
 //   embed -> room: { source: "kuma-karaoke-key", type: "ready" | "status" | "error" | "probe", ... }
 //
@@ -12,8 +12,9 @@
 // anything else in the middle, which is why the room can ask for half of it instead of all of it. Only the band a
 // voice actually lives in is cancelled: under 180 Hz the untouched mix comes through, so the kick and the bass stay,
 // and above 5.5 kHz it comes through too, so hats, cymbals and the crack of a clap stay. What a clap or a snare has
-// inside the vocal band still goes with the voice — that part is the trick, not a bug. A three-band EQ sits at the
-// end for whatever the room still wants to fix.
+// inside the vocal band still goes with the voice — that part is the trick, not a bug. A five-band EQ sits at the
+// end for whatever the room still wants to fix, and a limiter after everything, so a boosted band or a loud L−R never
+// reaches the speakers as crackle.
 //
 // The audio only goes through Web Audio once a key or a vocal cut is asked for; until then YouTube plays it untouched,
 // and YouTube's own ads always play untouched: the pitch shift steps aside while an ad is on screen.
@@ -30,6 +31,16 @@
   /** Above this it is hats, cymbals and the snap of a clap — and only the hiss of a voice. */
   const HIGH_CROSSOVER_HZ = 5500;
   const EQ_RANGE_DB = 8;
+  /** Boost up to this much is left to the limiter; anything beyond it lowers the whole EQ by the difference. */
+  const EQ_FREE_BOOST_DB = 4;
+  /** Bass to air; a room on 1.2 sends only low, mid and high, and the other two stay flat. */
+  const EQ_BANDS = [
+    { key: "low", type: "lowshelf", hz: 90 },
+    { key: "lowMid", type: "peaking", hz: 250, q: 1 },
+    { key: "mid", type: "peaking", hz: 1000, q: 0.9 },
+    { key: "highMid", type: "peaking", hz: 3000, q: 1 },
+    { key: "high", type: "highshelf", hz: 8000 },
+  ];
 
   let semitones = 0;
   /** 0 keeps the mix as it is, 1 subtracts the whole centre channel, and anything between mixes the two. */
@@ -42,7 +53,8 @@
   let meter = null;
   let killer = null;
   let eq = null;
-  let eqGains = { low: 0, mid: 0, high: 0 };
+  let eqGains = { low: 0, lowMid: 0, mid: 0, highMid: 0, high: 0 };
+  let limiter = null;
   let adPlaying = false;
   let adObserver = null;
 
@@ -71,6 +83,7 @@
 
     if (!killer) killer = buildKiller();
     if (!eq) eq = buildEq();
+    if (!limiter) limiter = buildLimiter();
 
     if (sourceElement !== video) {
       source?.disconnect();
@@ -136,28 +149,48 @@
     return { splitter, dry, side, keep, out };
   }
 
-  /** Three plain bands at the end of the chain, so a thin karaoke mix can be pushed back into shape. */
+  /** Five plain bands at the end of the chain, so a thin karaoke mix can be pushed back into shape. */
   function buildEq() {
-    const low = context.createBiquadFilter();
-    low.type = "lowshelf";
-    low.frequency.value = 160;
-    const mid = context.createBiquadFilter();
-    mid.type = "peaking";
-    mid.frequency.value = 1000;
-    mid.Q.value = 0.9;
-    const high = context.createBiquadFilter();
-    high.type = "highshelf";
-    high.frequency.value = 5000;
-    low.connect(mid);
-    mid.connect(high);
-    return { low, mid, high, input: low, out: high };
+    const filters = {};
+    // Past a few dB of boost the limiter alone would be working hard on every beat; the trim takes the rest back first.
+    const trim = context.createGain();
+    let previous = trim;
+    for (const band of EQ_BANDS) {
+      const filter = context.createBiquadFilter();
+      filter.type = band.type;
+      filter.frequency.value = band.hz;
+      if (band.q) filter.Q.value = band.q;
+      previous.connect(filter);
+      filters[band.key] = filter;
+      previous = filter;
+    }
+    return { trim, filters, input: trim, out: previous };
   }
 
   function applyEq() {
     if (!eq) return;
-    eq.low.gain.value = eqGains.low;
-    eq.mid.gain.value = eqGains.mid;
-    eq.high.gain.value = eqGains.high;
+    for (const band of EQ_BANDS) eq.filters[band.key].gain.value = eqGains[band.key];
+    const boost = Math.max(0, ...EQ_BANDS.map((band) => eqGains[band.key]));
+    eq.trim.gain.value = 10 ** (-Math.max(0, boost - EQ_FREE_BOOST_DB) / 20);
+  }
+
+  function toning() {
+    return EQ_BANDS.some((band) => eqGains[band.key] !== 0);
+  }
+
+  /**
+   * A brick wall just under full scale. Anything the room adds — a bass shelf, the 1.4× lift on L−R — can push a
+   * mastered song past 0 dBFS, and Web Audio clips that hard; this bends the peaks down instead. Quiet passages pass
+   * through untouched.
+   */
+  function buildLimiter() {
+    const node = context.createDynamicsCompressor();
+    node.threshold.value = -1.5;
+    node.knee.value = 0;
+    node.ratio.value = 20;
+    node.attack.value = 0.002;
+    node.release.value = 0.15;
+    return node;
   }
 
   /** YouTube marks its player while an ad plays; the ad must reach the speakers exactly as YouTube sent it. */
@@ -181,11 +214,12 @@
     stretch?.disconnect();
     killer.out.disconnect();
     eq.out.disconnect();
+    limiter.disconnect();
 
     // Straight through while the song is in its original key with every voice in it, or while an ad is playing.
     const shifted = semitones !== 0 && !adPlaying;
     const cutting = vocalCut > 0 && !adPlaying;
-    const toning = !adPlaying && (eqGains.low !== 0 || eqGains.mid !== 0 || eqGains.high !== 0);
+    const toned = !adPlaying && toning();
     let node = source;
     if (cutting) {
       killer.dry.gain.value = 1 - vocalCut;
@@ -201,10 +235,14 @@
       node.connect(stretch);
       node = stretch;
     }
-    if (toning) {
+    if (toned) {
       applyEq();
       node.connect(eq.input);
       node = eq.out;
+    }
+    if (node !== source) {
+      node.connect(limiter);
+      node = limiter;
     }
     node.connect(context.destination);
     node.connect(meter);
@@ -229,7 +267,7 @@
 
   async function apply() {
     // Nothing is asked of the audio yet and it has never been routed: leave YouTube's own path alone.
-    const quiet = semitones === 0 && vocalCut === 0 && eqGains.low === 0 && eqGains.mid === 0 && eqGains.high === 0;
+    const quiet = semitones === 0 && vocalCut === 0 && !toning();
     if (quiet && !source) {
       post("status", { semitones, vocalCut, eq: eqGains, processing: false });
       return;
@@ -241,7 +279,7 @@
       const latency = shifted ? await stretch.latency() : 0;
       post("status", {
         semitones, vocalCut, adPlaying, eq: eqGains,
-        processing: !adPlaying && (shifted || vocalCut > 0 || eqGains.low !== 0 || eqGains.mid !== 0 || eqGains.high !== 0),
+        processing: !adPlaying && (shifted || vocalCut > 0 || toning()),
         latencyMs: Math.round(latency * 1000),
       });
     } catch (error) {
@@ -262,7 +300,7 @@
 
   function setEq(bands) {
     const band = (value) => Math.max(-EQ_RANGE_DB, Math.min(EQ_RANGE_DB, Number.isFinite(value) ? Math.round(value) : 0));
-    eqGains = { low: band(bands.low), mid: band(bands.mid), high: band(bands.high) };
+    eqGains = Object.fromEntries(EQ_BANDS.map(({ key }) => [key, band(bands[key])]));
     applyEq();
     return apply();
   }

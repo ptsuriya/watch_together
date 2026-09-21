@@ -9,7 +9,7 @@ import {
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
 import {
-  CROSSFADE_OPTIONS, EQ_RANGE, FLAT_EQ, formatKey, isFlatEq, KEY_CONTROL_OPTIONS, KEY_RANGE, KEY_UNIT, MAX_NOTES,
+  CROSSFADE_OPTIONS, EQ_PRESETS, EQ_RANGE, eqPreset, formatKey, KEY_CONTROL_OPTIONS, KEY_RANGE, KEY_UNIT, MAX_NOTES,
   VOCAL_CUT_OPTIONS,
   type KeyControl as KeyControlMode, type KeyStep, type RoomEq, type RoomIntent, type RoomMode,
 } from "../../lib/room-state";
@@ -406,12 +406,17 @@ export function VocalCutSelect({ value, canManage, dispatch }: {
 }
 
 const EQ_BANDS = [
-  { key: "low", label: "ทุ้ม" },
-  { key: "mid", label: "กลาง" },
-  { key: "high", label: "แหลม" },
+  { key: "low", label: "เบส", hz: "90" },
+  { key: "lowMid", label: "ทุ้ม", hz: "250" },
+  { key: "mid", label: "กลาง", hz: "1k" },
+  { key: "highMid", label: "ใส", hz: "3k" },
+  { key: "high", label: "แหลม", hz: "8k" },
 ] as const;
 
-/** Karaoke: three bands for putting a thinned mix back into shape. Folded away until someone wants it. */
+/**
+ * Karaoke: presets first, because one tap is what most rooms want; five sliders folded under them for the rest.
+ * The extension keeps whatever the bands add from clipping, so a preset can lean hard without crackling.
+ */
 export function EqControl({ value, canManage, dispatch }: {
   value: RoomEq;
   canManage: boolean;
@@ -419,32 +424,46 @@ export function EqControl({ value, canManage, dispatch }: {
 }) {
   const groupId = useId();
   if (!canManage) return null;
-  const flat = isFlatEq(value);
+  const preset = eqPreset(value);
   return (
-    <details className="eq-control" open={!flat}>
-      <summary>
-        <SlidersHorizontal size={15} aria-hidden="true" /> ปรับเสียง
-        <strong>{flat ? "ปกติ" : EQ_BANDS.map((band) => `${value[band.key] > 0 ? "+" : ""}${value[band.key]}`).join(" / ")}</strong>
-      </summary>
-      {EQ_BANDS.map((band) => (
-        <label key={band.key} className="eq-band" htmlFor={`${groupId}-${band.key}`}>
-          <span>{band.label}</span>
-          <input
-            id={`${groupId}-${band.key}`}
-            type="range"
-            min={-EQ_RANGE}
-            max={EQ_RANGE}
-            step={1}
-            value={value[band.key]}
-            onChange={(event) => dispatch({ kind: "eq", eq: { ...value, [band.key]: Number(event.target.value) } })}
-          />
-          <em>{value[band.key] > 0 ? `+${value[band.key]}` : value[band.key]}</em>
-        </label>
-      ))}
-      <button type="button" className="text-btn" onClick={() => dispatch({ kind: "eq", eq: FLAT_EQ })}>
-        <RotateCcw size={14} aria-hidden="true" /> กลับเป็นปกติ
-      </button>
-    </details>
+    <div className="eq-control">
+      <span className="eq-head"><SlidersHorizontal size={15} aria-hidden="true" /> โทนเสียง</span>
+      <div className="eq-presets" role="radiogroup" aria-label="โทนเสียง">
+        {EQ_PRESETS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={preset?.id === option.id}
+            className={`chip-btn${preset?.id === option.id ? " is-on" : ""}`}
+            onClick={() => dispatch({ kind: "eq", eq: option.eq })}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <details className="eq-custom" open={!preset}>
+        <summary>
+          ปรับเอง
+          {!preset && <strong>{EQ_BANDS.map((band) => `${value[band.key] > 0 ? "+" : ""}${value[band.key]}`).join(" ")}</strong>}
+        </summary>
+        {EQ_BANDS.map((band) => (
+          <label key={band.key} className="eq-band" htmlFor={`${groupId}-${band.key}`}>
+            <span>{band.label}<small>{band.hz}</small></span>
+            <input
+              id={`${groupId}-${band.key}`}
+              type="range"
+              min={-EQ_RANGE}
+              max={EQ_RANGE}
+              step={1}
+              value={value[band.key]}
+              onChange={(event) => dispatch({ kind: "eq", eq: { ...value, [band.key]: Number(event.target.value) } })}
+            />
+            <em>{value[band.key] > 0 ? `+${value[band.key]}` : value[band.key]}</em>
+          </label>
+        ))}
+      </details>
+    </div>
   );
 }
 

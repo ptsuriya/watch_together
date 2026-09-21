@@ -162,9 +162,9 @@ export function YouTubePlayer({
   const nearEndItemRef = useRef<string | null>(null);
   /** The room's own volume. Read from the player between fades, never from the middle of one. */
   const baseVolumeRef = useRef(100);
-  const { low, mid, high } = eq ?? FLAT_EQ;
-  // Kept as three numbers so the effect below can depend on the values, not on a new object every render.
-  const tone = useMemo(() => ({ low, mid, high }), [high, low, mid]);
+  const { low, lowMid, mid, highMid, high } = eq ?? FLAT_EQ;
+  // Kept as five numbers so the effect below can depend on the values, not on a new object every render.
+  const tone = useMemo(() => ({ low, lowMid, mid, highMid, high }), [high, highMid, low, lowMid, mid]);
   const latest = useRef({ playing, follow, offset, resume, semitones, vocalCut, tone, onPlayingChange, onEnded, onError });
   /** The offset this player has already moved to, so a fresh one can move it at once. */
   const offsetRef = useRef(offset);

@@ -292,12 +292,39 @@ export const CROSSFADE_OPTIONS = [0, 3, 6, 10] as const;
 /** Off, half, and the whole centre channel. */
 export const VOCAL_CUT_OPTIONS = [0, 0.5, 1] as const;
 
-export type RoomEq = { low: number; mid: number; high: number };
+/**
+ * Five bands, bass to air. The first three names are the ones the 1.2 extension knew, so an older helper still hears
+ * the bass, the middle and the top of whatever the room sets.
+ */
+export const EQ_BAND_KEYS = ["low", "lowMid", "mid", "highMid", "high"] as const;
+export type EqBand = (typeof EQ_BAND_KEYS)[number];
+export type RoomEq = Record<EqBand, number>;
 export const EQ_RANGE = 8;
-export const FLAT_EQ: RoomEq = { low: 0, mid: 0, high: 0 };
+export const FLAT_EQ: RoomEq = { low: 0, lowMid: 0, mid: 0, highMid: 0, high: 0 };
+
+/** One tap each; the sliders stay for anyone who wants to go further. */
+export const EQ_PRESETS = [
+  { id: "flat", label: "ปกติ", eq: FLAT_EQ },
+  { id: "bass", label: "เบสแน่น", eq: { low: 5, lowMid: 3, mid: 0, highMid: 0, high: 0 } },
+  { id: "rock", label: "ร็อค", eq: { low: 4, lowMid: 1, mid: -2, highMid: 2, high: 4 } },
+  { id: "pop", label: "ป็อป", eq: { low: -1, lowMid: 2, mid: 3, highMid: 2, high: 1 } },
+  // Following the original singer: the voice's body and edge come forward.
+  { id: "voice", label: "ร้องชัด", eq: { low: -2, lowMid: -1, mid: 3, highMid: 4, high: 1 } },
+  // The other way round: the guide vocal sinks behind the band, for singing over it without cutting it.
+  { id: "band", label: "ดนตรีเด่น", eq: { low: 3, lowMid: 1, mid: -4, highMid: -3, high: 2 } },
+] as const satisfies readonly { id: string; label: string; eq: RoomEq }[];
+
+export function sameEq(a: RoomEq, b: RoomEq) {
+  return EQ_BAND_KEYS.every((band) => a[band] === b[band]);
+}
 
 export function isFlatEq(eq: RoomEq) {
-  return eq.low === 0 && eq.mid === 0 && eq.high === 0;
+  return sameEq(eq, FLAT_EQ);
+}
+
+/** The preset the bands happen to match, if any. */
+export function eqPreset(eq: RoomEq) {
+  return EQ_PRESETS.find((preset) => sameEq(preset.eq, eq)) ?? null;
 }
 
 function parseBand(value: unknown) {
@@ -307,8 +334,8 @@ function parseBand(value: unknown) {
 
 export function parseEq(value: unknown): RoomEq {
   if (typeof value !== "object" || value === null) return { ...FLAT_EQ };
-  const band = value as Record<string, unknown>;
-  return { low: parseBand(band.low), mid: parseBand(band.mid), high: parseBand(band.high) };
+  const bands = value as Record<string, unknown>;
+  return Object.fromEntries(EQ_BAND_KEYS.map((band) => [band, parseBand(bands[band])])) as RoomEq;
 }
 export const DEFAULT_CROSSFADE = 6;
 export const MAX_CHAT = 80;
@@ -423,9 +450,7 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     }
     case "eq": {
       const eq = parseEq(intent.eq);
-      return isFlatEq({ low: eq.low - state.eq.low, mid: eq.mid - state.eq.mid, high: eq.high - state.eq.high })
-        ? state
-        : { ...state, eq };
+      return sameEq(eq, state.eq) ? state : { ...state, eq };
     }
     case "vocalCut": {
       if (!isKaraoke(state.mode)) return state;
