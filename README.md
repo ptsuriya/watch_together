@@ -13,6 +13,10 @@ The host decides who may change the key: only the host, only whoever queued the 
 
 Songs crossfade into each other in every mode.
 
+## Little motions
+
+A handful of React Bits components (by David Haz, MIT + Commons Clause — used here as part of the app, never sold or redistributed on their own, with the notice kept in each file) live in `app/components/bits/` and `app/components/peek-rating.tsx`: the rising star rating, sparks on the emoji pad, hold-to-confirm on the tournament's end and the table's reset, a magnetic create button, the rotating headline, scores that count up, and a squishy scoring switch. `canvas-confetti` throws KUMA-coloured paper for a tournament's start, its champion, a five from you and any song averaging 4.5 or more. Every one of them stands still for a system that asks for reduced motion. The only libraries they add are `motion` and `canvas-confetti`; the compiler lint rules are relaxed for the copied files only, so they can be refreshed from upstream as they are.
+
 ## Deploy to Vercel with Supabase Realtime
 
 1. Create a Supabase project, then enable **Anonymous Sign-Ins** in **Authentication > Providers > Anonymous**.
