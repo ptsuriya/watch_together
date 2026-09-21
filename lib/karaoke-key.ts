@@ -23,6 +23,22 @@ export type HelperMessage = {
   semitones?: number;
   processing?: boolean;
   message?: string;
+  ai?: HelperAiState;
+  aiMs?: number;
+  delayMs?: number;
+  syncDelayMs?: number;
+};
+
+/** Where the extension's vocal network is on this screen. "off" until the room first asks for it. */
+export type HelperAiState = "off" | "loading" | "ready" | "unsupported" | "slow" | "error";
+
+export type HelperAi = {
+  state: HelperAiState;
+  /** How late this screen plays sound and picture while the network is on, in ms; 0 when it is not. */
+  delayMs: number;
+  /** The part of that delay the room should make up to other screens: the network's own, even while an ad plays. */
+  syncDelayMs: number;
+  msPerRun: number;
 };
 
 export function readHelperMessage(event: MessageEvent): HelperMessage | null {
@@ -39,7 +55,7 @@ export function sendToHelper(
   message:
     | { type: "hello" }
     | { type: "key"; semitones: number }
-    | { type: "vocals"; amount: number }
+    | { type: "vocals"; amount: number; engine: "ai" | "classic" }
     | ({ type: "eq" } & Record<"low" | "lowMid" | "mid" | "highMid" | "high", number>),
 ) {
   frame?.contentWindow?.postMessage({ source: ROOM_SOURCE, ...message }, EMBED_ORIGIN);
@@ -51,7 +67,7 @@ export type HelperStatus = "checking" | "ready" | "missing" | "unsupported" | "b
  * The version the room needs. An extension loaded from a folder never updates itself — only a store can do that —
  * so the room watches the version it hears and asks the person to load the new zip over it.
  */
-export const HELPER_MIN_VERSION = "1.3.0";
+export const HELPER_MIN_VERSION = "1.4.0";
 
 function olderThan(version: string, want: string) {
   const left = version.split(".").map(Number);
@@ -91,6 +107,7 @@ export function useKeyHelperStatus(enabled: boolean) {
   const [timedOut, setTimedOut] = useState(false);
   const [supported, setSupported] = useState(true);
   const [version, setVersion] = useState("");
+  const [ai, setAi] = useState<HelperAi | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -98,6 +115,17 @@ export function useKeyHelperStatus(enabled: boolean) {
       const message = readHelperMessage(event);
       if (!message) return;
       if (typeof message.version === "string") setVersion(message.version);
+      if (message.type === "status" && typeof message.ai === "string") {
+        const next: HelperAi = {
+          state: message.ai,
+          delayMs: Number.isFinite(message.delayMs) ? Number(message.delayMs) : 0,
+          syncDelayMs: Number.isFinite(message.syncDelayMs) ? Number(message.syncDelayMs) : 0,
+          msPerRun: Number.isFinite(message.aiMs) ? Number(message.aiMs) : 0,
+        };
+        setAi((current) =>
+          current && current.state === next.state && current.delayMs === next.delayMs
+            && current.syncDelayMs === next.syncDelayMs && current.msPerRun === next.msPerRun ? current : next);
+      }
       if (message.type === "error" && message.message === "audio-blocked") setAnswered("blocked");
       else setAnswered("ready");
     };
@@ -116,5 +144,5 @@ export function useKeyHelperStatus(enabled: boolean) {
   else if (answered) status = answered;
   else if (!supported) status = "unsupported";
   else status = timedOut ? "missing" : "checking";
-  return { status, version };
+  return { status, version, ai };
 }

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_name__",
   "short_name": "KUMA Key",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "__MSG_description__",
   "icons": {
     "16": "icons/icon-16.png",
@@ -26,12 +26,23 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "vendor/signalsmith-stretch.js"
+        "vendor/signalsmith-stretch.js",
+        "ai/frame.html",
+        "ai/frame.js",
+        "ai/worker.js",
+        "ai/worklet.js",
+        "ai/stream.js",
+        "ai/vocal-remover-v4.onnx",
+        "vendor/ort/*"
       ],
       "matches": [
         "https://www.youtube-nocookie.com/*"
       ]
     }
   ],
-  "default_locale": "en"
+  "default_locale": "en",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "minimum_chrome_version": "116"
 }

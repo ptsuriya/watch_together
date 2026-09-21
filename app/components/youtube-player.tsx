@@ -111,6 +111,7 @@ export function YouTubePlayer({
   hasNext = false,
   semitones,
   vocalCut = 0,
+  vocalAi = false,
   eq,
   follow,
   offset = 0,
@@ -135,6 +136,8 @@ export function YouTubePlayer({
   semitones?: number;
   /** Karaoke: how much of the centre channel the extension should subtract, to thin the guide vocal. */
   vocalCut?: number;
+  /** Ask the extension for its neural network instead of L−R (it falls back by itself where it cannot run one). */
+  vocalAi?: boolean;
   /** Karaoke: the room's three EQ bands, in dB. */
   eq?: RoomEq;
   /** Guests: keep the player within a second or two of the host. */
@@ -165,7 +168,8 @@ export function YouTubePlayer({
   const { low, lowMid, mid, highMid, high } = eq ?? FLAT_EQ;
   // Kept as five numbers so the effect below can depend on the values, not on a new object every render.
   const tone = useMemo(() => ({ low, lowMid, mid, highMid, high }), [high, highMid, low, lowMid, mid]);
-  const latest = useRef({ playing, follow, offset, resume, semitones, vocalCut, tone, onPlayingChange, onEnded, onError });
+  const engine: "ai" | "classic" = vocalAi ? "ai" : "classic";
+  const latest = useRef({ playing, follow, offset, resume, semitones, vocalCut, engine, tone, onPlayingChange, onEnded, onError });
   /** The offset this player has already moved to, so a fresh one can move it at once. */
   const offsetRef = useRef(offset);
   const [active, setActive] = useState(0);
@@ -178,7 +182,7 @@ export function YouTubePlayer({
   const sendsKey = semitones !== undefined;
 
   useEffect(() => {
-    latest.current = { playing, follow, offset, resume, semitones, vocalCut, tone, onPlayingChange, onEnded, onError };
+    latest.current = { playing, follow, offset, resume, semitones, vocalCut, engine, tone, onPlayingChange, onEnded, onError };
   });
 
   useEffect(() => {
@@ -367,8 +371,8 @@ export function YouTubePlayer({
 
   useEffect(() => {
     if (semitones === undefined) return;
-    sendToHelper(decksRef.current[activeRef.current].player?.getIframe(), { type: "vocals", amount: vocalCut });
-  }, [active, item.id, readyCount, semitones, vocalCut]);
+    sendToHelper(decksRef.current[activeRef.current].player?.getIframe(), { type: "vocals", amount: vocalCut, engine });
+  }, [active, engine, item.id, readyCount, semitones, vocalCut]);
 
   useEffect(() => {
     if (semitones === undefined) return;
@@ -383,7 +387,7 @@ export function YouTubePlayer({
       const frame = decksRef.current[activeRef.current].player?.getIframe();
       if (message?.type !== "ready" || !frame || event.source !== frame.contentWindow) return;
       sendToHelper(frame, { type: "key", semitones: latest.current.semitones ?? 0 });
-      sendToHelper(frame, { type: "vocals", amount: latest.current.vocalCut });
+      sendToHelper(frame, { type: "vocals", amount: latest.current.vocalCut, engine: latest.current.engine });
       sendToHelper(frame, { type: "eq", ...latest.current.tone });
     };
     window.addEventListener("message", handleMessage);

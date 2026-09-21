@@ -3,10 +3,11 @@
 import { QRCodeSVG } from "qrcode.react";
 import {
   AArrowDown, AArrowUp, Check, ChevronDown, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, MicOff, MicVocal, Minus, MonitorPlay,
-  Plus, QrCode, RotateCcw, SlidersHorizontal, Tv, UserMinus,
+  Plus, QrCode, RotateCcw, SlidersHorizontal, Sparkles, Tv, UserMinus,
   MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import type { HelperAi } from "../../lib/karaoke-key";
 import type { RealtimeStatus, RoomMember } from "../../lib/room-realtime";
 import {
   CROSSFADE_OPTIONS, EQ_PRESETS, EQ_RANGE, eqPreset, formatKey, KEY_CONTROL_OPTIONS, KEY_RANGE, KEY_UNIT, MAX_NOTES,
@@ -380,28 +381,73 @@ export function KeyControlSelect({ value, dispatch }: { value: KeyControlMode; d
 
 const VOCAL_CUT_LABELS: Record<number, string> = { 0: "ปกติ", 0.5: "ลดครึ่ง", 1: "ตัดออก" };
 
-/** Karaoke: how much of the original singer the room wants left. It sits with the key, where it is used. */
-export function VocalCutSelect({ value, canManage, dispatch }: {
+/** What this screen's extension is doing with the AI, in a line under the control. */
+function aiLine(helperAi: HelperAi | null | undefined) {
+  if (!helperAi || helperAi.state === "off") return null;
+  switch (helperAi.state) {
+    case "loading":
+      return { tone: "", text: "AI กำลังโหลดบนเครื่องนี้ ระหว่างนี้ใช้แบบเดิมไปก่อน" };
+    case "ready":
+      return helperAi.delayMs > 0
+        ? { tone: "is-ready", text: `AI ตัดเสียงร้องอยู่ · ภาพกับเสียงเครื่องนี้หน่วง ${(helperAi.delayMs / 1000).toFixed(1)} วิ ให้ตรงกัน` }
+        : { tone: "is-ready", text: "AI พร้อมบนเครื่องนี้" };
+    case "unsupported":
+      return { tone: "is-warn", text: "เบราว์เซอร์เครื่องนี้ไม่มี WebGPU ใช้แบบเดิมแทน" };
+    case "slow":
+      return { tone: "is-warn", text: "การ์ดจอเครื่องนี้ช้าเกินไปสำหรับ AI ใช้แบบเดิมแทน" };
+    default:
+      return { tone: "is-warn", text: "เปิด AI ไม่สำเร็จ ใช้แบบเดิมแทน ลองรีเฟรชหน้า" };
+  }
+}
+
+/**
+ * Karaoke: how much of the original singer the room wants left, and whether the extension's neural network takes it
+ * out (clean, stereo, half a second late on every screen that runs it) or the old L−R trick does. It sits with the key.
+ */
+export function VocalCutSelect({ value, ai, helperAi, canManage, dispatch }: {
   value: number;
+  ai: boolean;
+  /** This screen's own extension, where this screen plays the song. */
+  helperAi?: HelperAi | null;
   canManage: boolean;
   dispatch: (intent: RoomIntent) => void;
 }) {
   const selectId = useId();
+  const line = value > 0 && ai ? aiLine(helperAi) : null;
+  const status = line ? <p className={`vocal-ai-line ${line.tone}`}>{line.text}</p> : null;
   if (!canManage) {
-    return value > 0 ? <p className="hint">ห้องนี้ {VOCAL_CUT_LABELS[value]}เสียงร้องต้นฉบับอยู่</p> : null;
+    if (value === 0) return null;
+    return (
+      <>
+        <p className="hint">ห้องนี้{VOCAL_CUT_LABELS[value]}เสียงร้องต้นฉบับอยู่{ai ? " ด้วย AI" : ""}</p>
+        {status}
+      </>
+    );
   }
   return (
-    <span className="crossfade-select">
-      <label htmlFor={selectId}><MicOff size={15} aria-hidden="true" /> เสียงร้องต้นฉบับ</label>
-      <select
-        id={selectId}
-        className="field"
-        value={value}
-        onChange={(event) => dispatch({ kind: "vocalCut", amount: Number(event.target.value) })}
-      >
-        {VOCAL_CUT_OPTIONS.map((amount) => <option key={amount} value={amount}>{VOCAL_CUT_LABELS[amount]}</option>)}
-      </select>
-    </span>
+    <div className="vocal-cut">
+      <span className="crossfade-select">
+        <label htmlFor={selectId}><MicOff size={15} aria-hidden="true" /> เสียงร้องต้นฉบับ</label>
+        <select
+          id={selectId}
+          className="field"
+          value={value}
+          onChange={(event) => dispatch({ kind: "vocalCut", amount: Number(event.target.value) })}
+        >
+          {VOCAL_CUT_OPTIONS.map((amount) => <option key={amount} value={amount}>{VOCAL_CUT_LABELS[amount]}</option>)}
+        </select>
+        <button
+          type="button"
+          className={`pill vocal-ai-toggle${ai ? " is-on" : ""}`}
+          aria-pressed={ai}
+          onClick={() => dispatch({ kind: "vocalAi", enabled: !ai })}
+          title={ai ? "ตัดด้วย AI: สะอาดกว่า เป็นสเตอริโอ แต่ภาพกับเสียงหน่วงราวครึ่งวินาที" : "ตัดแบบเดิม (L−R): ไม่หน่วง แต่ได้ผลเฉพาะเพลงที่ร้องกลางวง"}
+        >
+          <Sparkles size={14} aria-hidden="true" /> AI
+        </button>
+      </span>
+      {status}
+    </div>
   );
 }
 

@@ -3,7 +3,7 @@
 import { Minimize2, QrCode } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { formatKey, peekNext, singerOf } from "../../lib/room-state";
-import type { HelperStatus } from "../../lib/karaoke-key";
+import type { HelperAi, HelperStatus } from "../../lib/karaoke-key";
 import { ChatFlights, type ChatMessage } from "./chat";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { DraftPicker, PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
@@ -53,6 +53,7 @@ export function TvRoom({
   bursts,
   messages,
   keyHelperStatus,
+  helperAi,
   onReact,
   onChat,
   onOpenKaraokeSetup,
@@ -65,6 +66,7 @@ export function TvRoom({
   bursts: EmojiBurst[];
   messages: ChatMessage[];
   keyHelperStatus: HelperStatus;
+  helperAi: HelperAi | null;
   onReact: (emoji: string) => void;
   onChat: (text: string) => void;
   onOpenKaraokeSetup: () => void;
@@ -182,7 +184,7 @@ export function TvRoom({
         {karaoke && (
           <section className="card side-key" aria-label="คีย์">
             <KeyControl value={state.key} dispatch={dispatch} />
-            <VocalCutSelect value={state.vocalCut} canManage={canManage} dispatch={dispatch} />
+            <VocalCutSelect value={state.vocalCut} ai={state.vocalAi} helperAi={helperAi} canManage={canManage} dispatch={dispatch} />
             <EqControl value={state.eq} canManage={canManage} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />

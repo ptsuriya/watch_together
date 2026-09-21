@@ -23,11 +23,32 @@ the video through Web Audio into [Signalsmith Stretch](https://signalsmith-audio
   one-tap presets or sliders, followed by a limiter just under full scale whenever the audio is processed at all, so a
   bass boost or the lift on L−R bends the peaks down instead of clipping. A 1.2 helper hears only the low, mid and high
   bands, which is why the room asks for 1.3.
-- None of it touches a YouTube ad: while the player says an ad is on, the audio goes straight through.
+- **AI vocal removal (1.4.0)** — with `engine: "ai"` the voice is taken out by tsurumeso's vocal-remover v4 network
+  (MIT, `ai/vocal-remover-v4.onnx`, BatchNorm folded and weights stored as fp16, 16 MB) running on WebGPU through
+  ONNX Runtime Web in a worker. A content script cannot start a worker from the extension, so it adds a hidden 1×1
+  extension page (`ai/frame.html`) to the embed, which starts `ai/worker.js`; an AudioWorklet (`ai/worklet.js`) cuts
+  the audio into 8192-sample chunks and trades them with the worker directly over a MessagePort. `ai/stream.js` is the
+  streaming STFT (2048/1024 Hann, the model's own numbers): the network sees the last 64 frames and decides the
+  frames 8 short of the newest, so each chunk plays `(1 + 8) × 1024 + 2 × 8192 = 25 600` samples (0.58 s at 44.1 kHz)
+  after it arrived. That delay is fixed — a chunk the worker has not returned by then is covered by the untouched audio
+  of the same moment, faded across — so the video can be held back by exactly the same amount: every decoded frame is
+  copied and drawn on a canvas over the video when its moment comes round again (plus the pitch shifter's own latency
+  when the key is moved). The audio context runs at 44.1 kHz, the rate the model was trained at.
+  The worker times the network before it promises real time: under 110 ms a run it uses 8-frame chunks, under 240 ms
+  16-frame chunks (0.95 s delay), slower than that — or without WebGPU — the extension says so and L−R carries on. The
+  room reads the network's delay from the status message and makes it up to the other screens in a sing-along.
+  Measured on 12 MUSDB18 test excerpts, the accompaniment comes out at 11.0 dB SDR against 11.5 dB for the model run
+  offline over the whole song, with the voice 8 dB down; L−R on the same excerpts leaves the voice where it was
+  (−2.9 dB SDR, since those mixes do not keep the voice dead centre). `ai/tools/` has the export, the evaluation and the
+  parity check (the JavaScript STFT matches librosa to −132 dB).
+- None of it touches a YouTube ad: while the player says an ad is on, the audio goes straight through, with no delay.
 
 ## Install for testing
 
-`npm run extension:zip` in the project root packs `public/kuma-karaoke-key.zip`.
+`npm run extension:zip` in the project root runs `scripts/pack-extension.mjs`: it copies `extension/` into
+`.extension-build/` (load that folder unpacked to test), adds ONNX Runtime Web's WebGPU build from `node_modules`, and
+packs `public/kuma-karaoke-key.zip` (about 22 MB, most of it the model and the runtime). The site build runs it too,
+so the zip is not kept in git.
 
 - **Chrome / Brave / Vivaldi** — unzip, open `chrome://extensions`, turn on Developer mode, **Load unpacked**, pick the folder.
 - **Edge** — unzip, open `edge://extensions`, turn on developer mode, **Load unpacked**, pick the folder.

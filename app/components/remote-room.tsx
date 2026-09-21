@@ -69,7 +69,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
                 : "โฮสต์ปรับคีย์เอง"}
             </p>
           )}
-          <VocalCutSelect value={state.vocalCut} canManage={canManage} dispatch={dispatch} />
+          <VocalCutSelect value={state.vocalCut} ai={state.vocalAi} canManage={canManage} dispatch={dispatch} />
           <EqControl value={state.eq} canManage={canManage} dispatch={dispatch} />
           <p className="hint">
             {state.keyHelper

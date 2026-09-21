@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/pack-extension.mjs && next build",
     "start": "next start",
     "lint": "eslint .",
-    "extension:zip": "rm -f public/kuma-karaoke-key.zip && cd extension && zip -qr ../public/kuma-karaoke-key.zip . -x '.DS_Store' '*/.DS_Store' 'store/*' 'README.md'"
+    "extension:zip": "node scripts/pack-extension.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
@@ -27,6 +27,8 @@
     "@types/react-dom": "^19.2.7",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.4",
+    "fflate": "0.8.3",
+    "onnxruntime-web": "1.30.0",
     "typescript": "^6.0.3"
   }
 }

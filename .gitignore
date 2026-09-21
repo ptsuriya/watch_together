@@ -6,3 +6,7 @@ tsconfig.tsbuildinfo
 
 # The browser pane writes this when it starts the dev server; it points at one machine.
 .claude/launch.json
+
+# Built from extension/ by scripts/pack-extension.mjs on every build.
+.extension-build/
+public/kuma-karaoke-key.zip

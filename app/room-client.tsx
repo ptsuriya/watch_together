@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  createRoomState, hasContent, hasOwnScreens, isBanned, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
+  clampOffset, createRoomState, hasContent, hasOwnScreens, isBanned, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
   sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS, TOURNAMENT_FLASH_MS,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
@@ -502,6 +502,9 @@ export default function RoomClient({
   // Everyone's own screen shifts its own key in a sing-along, so every device checks for the extension.
   const helper = useKeyHelperStatus(state.mode === "singalong" || (isHost && state.mode === "karaoke"));
   const keyHelperStatus = helper.status;
+  // While the extension's network holds this screen's sound and picture back, the others make up for it: the host by
+  // moving the whole room, a guest by running its own copy that much ahead. Screens that all run it cancel out.
+  const aiDelay = hasOwnScreens(state.mode) ? (helper.ai?.syncDelayMs ?? 0) / 1000 : 0;
   const { offset: syncOffset, change: changeSyncOffset } = useSyncOffset();
   const selfName = listenerName || (isHost ? "โฮสต์" : selfId ? `ผู้ฟัง ${selfId.slice(0, 4).toUpperCase()}` : "ผู้ฟัง");
   const hostOnline = members.some((member) => member.isHost);
@@ -536,11 +539,11 @@ export default function RoomClient({
 
   // The host moved their own screen: tell the room at once, so every other screen steps to meet it.
   useEffect(() => {
-    const mine = isHost ? syncOffset : 0;
+    const mine = isHost ? clampOffset(syncOffset + aiDelay) : 0;
     if (hostOffsetRef.current === mine) return;
     hostOffsetRef.current = mine;
     if (isHost) scheduleBroadcast(BROADCAST_DELAY_MS);
-  }, [isHost, scheduleBroadcast, syncOffset]);
+  }, [aiDelay, isHost, scheduleBroadcast, syncOffset]);
 
   useEffect(() => {
     isHostRef.current = isHost;
@@ -739,10 +742,11 @@ export default function RoomClient({
       hasNext={state.queue.length > 0}
       semitones={isKaraoke(state.mode) && (isHost || state.mode === "singalong") ? state.key : undefined}
       vocalCut={state.vocalCut}
+      vocalAi={state.vocalAi}
       eq={state.eq}
       onNearEnd={isHost ? handleNearEnd : undefined}
       follow={isHost ? undefined : follow}
-      offset={isHost ? 0 : syncOffset - state.hostOffset}
+      offset={isHost ? 0 : syncOffset + aiDelay - state.hostOffset}
       resume={isHost ? resume : undefined}
       timeRef={isHost ? timeRef : undefined}
       onPlayingChange={isHost ? handlePlayerPlaying : undefined}
@@ -766,6 +770,7 @@ export default function RoomClient({
         syncOffset={syncOffset}
         onSyncOffset={changeSyncOffset}
         keyHelperStatus={keyHelperStatus}
+        helperAi={helper.ai}
         onOpenKaraokeSetup={() => setDialog("karaoke")}
         onChat={sendChat}
         onReact={sendReaction}
@@ -781,6 +786,7 @@ export default function RoomClient({
         bursts={bursts}
         messages={messages}
         keyHelperStatus={keyHelperStatus}
+        helperAi={helper.ai}
         onReact={sendReaction}
         onChat={sendChat}
         onOpenKaraokeSetup={() => setDialog("karaoke")}

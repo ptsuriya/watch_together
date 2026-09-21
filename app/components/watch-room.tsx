@@ -2,7 +2,7 @@
 
 import { UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
-import type { HelperStatus } from "../../lib/karaoke-key";
+import type { HelperAi, HelperStatus } from "../../lib/karaoke-key";
 import { mayChangeKey, singerOf } from "../../lib/room-state";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { ChatBar, type ChatMessage } from "./chat";
@@ -31,6 +31,7 @@ export function WatchRoom({
   syncOffset,
   onSyncOffset,
   keyHelperStatus,
+  helperAi,
   onOpenKaraokeSetup,
 }: {
   model: RoomModel;
@@ -45,6 +46,7 @@ export function WatchRoom({
   syncOffset: number;
   onSyncOffset: (value: number) => void;
   keyHelperStatus: HelperStatus;
+  helperAi: HelperAi | null;
   onOpenKaraokeSetup: () => void;
 }) {
   const { state, isHost, canManage, dispatch, members, selfId, selfName } = model;
@@ -84,7 +86,7 @@ export function WatchRoom({
                 {state.keyControl === "owner" ? "โฮสต์ให้เฉพาะคนที่ขอเพลงนี้ปรับคีย์ได้" : "โฮสต์ปรับคีย์เอง"}
               </p>
             )}
-            <VocalCutSelect value={state.vocalCut} canManage={canManage} dispatch={dispatch} />
+            <VocalCutSelect value={state.vocalCut} ai={state.vocalAi} helperAi={helperAi} canManage={canManage} dispatch={dispatch} />
             <EqControl value={state.eq} canManage={canManage} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} place="device" />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />

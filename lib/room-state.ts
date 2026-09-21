@@ -53,7 +53,12 @@ export type RoomState = {
   key: number;
   /** How much of the centre channel the room subtracts, to thin out the guide vocal: 0, 0.5 or 1. */
   vocalCut: number;
-  /** Three bands in dB, for putting a thinned karaoke mix back into shape. */
+  /**
+   * Take the voice out with the neural network in the extension (1.4+) rather than L−R. Each screen that cannot run it
+   * falls back to L−R on its own, so this is what the room would like, not a promise.
+   */
+  vocalAi: boolean;
+  /** Five bands in dB, for putting a karaoke mix into shape. */
   eq: RoomEq;
   /** The notes panel is on screen at all. */
   notesOn: boolean;
@@ -234,6 +239,7 @@ export type RoomIntent =
   | { kind: "keyControl"; value: KeyControl }
   | { kind: "voiceRoom"; address: string }
   | { kind: "vocalCut"; amount: number }
+  | { kind: "vocalAi"; enabled: boolean }
   | { kind: "eq"; eq: RoomEq }
   | { kind: "cohost"; memberId: string; enabled: boolean }
   /** Show someone the door, or open it again for everyone. */
@@ -263,7 +269,7 @@ export type RoomIntent =
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
-  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "tournamentTheme", "vocalCut", "eq", "voiceRoom", "kick", "unban",
+  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "tournamentTheme", "vocalCut", "vocalAi", "eq", "voiceRoom", "kick", "unban",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -271,7 +277,7 @@ export type GuestIntent = Extract<
   RoomIntent,
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
-    | "bomb" | "standingsReset" | "tournament" | "tournamentPick" | "tournamentTheme" | "vocalCut" | "eq"
+    | "bomb" | "standingsReset" | "tournament" | "tournamentPick" | "tournamentTheme" | "vocalCut" | "vocalAi" | "eq"
     | "voiceRoom" | "kick" | "unban" }
 >;
 
@@ -350,7 +356,7 @@ export function isVideoId(value: unknown): value is string {
 export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
-    vocalCut: 0, eq: { ...FLAT_EQ }, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
+    vocalCut: 0, vocalAi: true, eq: { ...FLAT_EQ }, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
     voiceRoom: "", cohosts: [], banned: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
     standings: [], tournament: null, hostOffset: 0,
@@ -457,6 +463,8 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       const amount = VOCAL_CUT_OPTIONS.find((option) => option === intent.amount) ?? 0;
       return amount === state.vocalCut ? state : { ...state, vocalCut: amount };
     }
+    case "vocalAi":
+      return intent.enabled === state.vocalAi ? state : { ...state, vocalAi: intent.enabled };
     case "cohost": {
       const has = state.cohosts.includes(intent.memberId);
       if (intent.enabled === has) return state;
@@ -827,6 +835,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     notes: typeof value.notes === "string" ? value.notes.slice(0, MAX_NOTES) : "",
     key,
     vocalCut: VOCAL_CUT_OPTIONS.find((option) => option === value.vocalCut) ?? 0,
+    vocalAi: value.vocalAi !== false,
     eq: parseEq(value.eq),
     notesOn: value.notesOn !== false,
     notesShared: value.notesShared === true,
@@ -1012,6 +1021,8 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
       return typeof value.seconds === "number" ? { kind: "bombSeconds", seconds: value.seconds } : null;
     case "vocalCut":
       return typeof value.amount === "number" ? { kind: "vocalCut", amount: value.amount } : null;
+    case "vocalAi":
+      return typeof value.enabled === "boolean" ? { kind: "vocalAi", enabled: value.enabled } : null;
     case "voiceRoom":
       return typeof value.address === "string" ? { kind: "voiceRoom", address: value.address } : null;
     case "kick": {
