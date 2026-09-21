@@ -6,7 +6,7 @@ import { formatKey, peekNext, singerOf } from "../../lib/room-state";
 import type { HelperStatus } from "../../lib/karaoke-key";
 import { ChatFlights, type ChatMessage } from "./chat";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
-import { PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
+import { DraftPicker, PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { EqControl, KeyControl, MemberList, RoomQr, VocalCutSelect } from "./room-panels";
@@ -146,9 +146,11 @@ export function TvRoom({
           <PlaybackButtons state={state} dispatch={dispatch} />
         </section>
 
+        <DraftPicker state={state} selfName={selfName} dispatch={dispatch} />
+
         {state.tournament && (
           <section className="card side-board" aria-label="ทัวร์นาเมนต์">
-            <TournamentPanel state={state} />
+            <TournamentPanel state={state} selfName={selfName} />
           </section>
         )}
 
