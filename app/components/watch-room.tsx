@@ -13,6 +13,7 @@ import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EqControl, KeyControl, MemberList, NotesPanel, VocalCutSelect } from "./room-panels";
 import type { RoomModel } from "./room-model";
 import { Art } from "./ui";
+import { VoiceRoomCard } from "./voice-room";
 
 /**
  * Watch together, and its karaoke twin: everyone has a player. Video | notes on top, members | up next below.
@@ -90,6 +91,7 @@ export function WatchRoom({
           </div>
         )}
         {state.nowPlaying && <SyncOffsetControl offset={syncOffset} onChange={onSyncOffset} isHost={isHost} />}
+        {state.voiceRoom && <VoiceRoomCard address={state.voiceRoom} compact />}
         <div className="watch-social">
           {state.chat && <ChatBar onSend={onChat} compact />}
           <EmojiPad onSend={onReact} compact />

@@ -10,6 +10,7 @@ import { EmojiPad } from "./reactions";
 import { MODE_LABELS, type RoomModel } from "./room-model";
 import { EqControl, KeyControl, VocalCutSelect } from "./room-panels";
 import { Art, VideoThumb } from "./ui";
+import { VoiceRoomCard } from "./voice-room";
 
 /** Remote and karaoke, guest side: a phone remote for the host's screen. */
 export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenParty }: {
@@ -82,6 +83,12 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
           <h2 id="remote-manage-title">คุณเป็นหัวห้องร่วม</h2>
           <p className="hint">จัดคิวและตั้งค่าห้องได้เหมือนโฮสต์</p>
           <PartyButton state={state} onOpen={onOpenParty} />
+        </section>
+      )}
+
+      {state.voiceRoom && (
+        <section className="card remote-voice" aria-label="ห้องเสียง">
+          <VoiceRoomCard address={state.voiceRoom} compact />
         </section>
       )}
 

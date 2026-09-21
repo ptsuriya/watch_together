@@ -11,6 +11,7 @@ import {
 } from "../../lib/room-state";
 import type { RoomModel } from "./room-model";
 import { ChatToggle, CrossfadeSelect, KeyControlSelect, NotesToggle } from "./room-panels";
+import { VoiceRoomField } from "./voice-room";
 import { Art, Dialog } from "./ui";
 
 const QUEUE_ORDER_LABELS: Record<QueueOrder, { name: string; hint: string }> = {
@@ -171,8 +172,9 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
             {state.mode === "watch" && <NotesToggle enabled={state.notesOn} dispatch={dispatch} />}
           </div>
           {isKaraoke(state.mode) && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
-
         </div>
+
+        <VoiceRoomField value={state.voiceRoom} dispatch={dispatch} />
       </div>
       <Art name="party" className="dialog-bear" sizes="96px" />
     </Dialog>

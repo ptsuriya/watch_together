@@ -218,6 +218,8 @@ export function HomeScreen({ onCreate, onJoin }: { onCreate: (mode: RoomMode) =>
               {" · "}
               <Link href="/discord" className="footer-link">ดูด้วยกันผ่าน Discord</Link>
               {" · "}
+              <Link href="/jamulus" className="footer-link">ร้องพร้อมกันด้วย Jamulus</Link>
+              {" · "}
               <Link href="/privacy" className="footer-link">ความเป็นส่วนตัว</Link>
             </p>
           </div>

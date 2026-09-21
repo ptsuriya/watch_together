@@ -54,6 +54,14 @@ The host can hand the run of the room to anyone in it: open the people dialog (t
 
 If the room is on a call — someone shares their screen in Discord, Meet or Zoom — the stream reaches everyone a little late, and how late differs per person. In watch mode and karaoke together a guest gets **ปรับหน่วงเวลา** under the player: a slider (and ±0.1 s buttons) that runs their own player up to 5 seconds ahead of, or behind, the host. A shared screen arrives late, so that case moves the slider to the left; Bluetooth headphones are late the other way, so they move it right. The guide spells out which way to go by what you notice first. The value is kept on that device only and never enters the room state, because it describes that person's connection, not the room. Moving it seeks straight away; after that the player follows the host as usual, so the offset holds without fighting the heartbeat.
 
+## Singing together from different houses
+
+Voice chat is too slow to sing over: Discord and Meet land somewhere around 200–500 ms, and a singer needs tens of milliseconds. [Jamulus](https://jamulus.io/) is built for that — musicians rehearsing online, 20–50 ms on a wired connection — so the room can borrow it: **Jamulus carries the voices, KUMA carries the song, the queue, the lyrics, the key and the score.**
+
+Jamulus has no link a browser can open, so the room does the next best thing. The host puts the server address in **ตั้งค่าห้อง → ห้องเสียง (Jamulus)** and every screen then shows the same address with a copy button and the one line that matters: Connection Setup, paste, Connect, headphones on. `/jamulus` is the full guide — what to install, which four settings matter, how to pick a server, and how to use the offset slider to line the backing track up with the voices coming back.
+
+Nobody should play the song into Jamulus for everyone else: that is redistributing YouTube's audio, and it sounds worse than each person playing it themselves.
+
 ## Party games
 
 The singing games belong to the karaoke modes: watch together keeps the queue's rules (the per-person limit, what plays next) and what the screens show, and does not offer the mic bomb, blind karaoke, scoring or the tournament. Switching a room out of karaoke puts those down with it. **ตั้งค่าห้อง** beside the queue holds everything the room is set to — the night's rules, the game, and what the screens show. It is one button rather than a row of chips, and only the host or a co-host may open it to change anything.

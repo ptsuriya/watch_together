@@ -931,6 +931,22 @@ select.field { padding-right: 8px; }
 .watch-key .helper-note { margin: 0; }
 .helper-note.is-warn { color: var(--amber-deep); }
 
+.side-voice, .remote-voice { display: grid; padding: 16px; }
+.voice-room { display: grid; gap: 8px; }
+.voice-room-head { display: flex; align-items: center; gap: 6px; color: var(--bark); font-size: 15px; font-weight: 700; }
+.voice-room-address { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.voice-room-address code {
+  flex: 1; min-width: 0; padding: 6px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 2px solid var(--line); border-radius: 12px; background: var(--white);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--bark);
+}
+.voice-room small { color: var(--clay); font-size: 13px; }
+.voice-room.is-compact { padding: 10px 12px; border: 2px dashed var(--line); border-radius: 16px; }
+.voice-room-help {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--amber-deep); font-size: 13px; font-weight: 600; text-underline-offset: 3px;
+}
+
 .eq-control { display: grid; gap: 6px; }
 .eq-control summary {
   display: flex; align-items: center; gap: 6px; color: var(--bark); font-size: 14px; font-weight: 700; cursor: pointer;

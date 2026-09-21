@@ -65,6 +65,8 @@ export type RoomState = {
   keyHelper: boolean;
   /** Messages from phones fly across the screen. */
   chat: boolean;
+  /** A Jamulus server the room sings through, as host[:port]. Empty when the room is not using one. */
+  voiceRoom: string;
   /** Who may change the key: the host alone, the person who queued the song, or anyone in the room. */
   keyControl: KeyControl;
   /** Member ids the host has given the run of the room: queue and settings, everything but handing out this right. */
@@ -201,6 +203,7 @@ export type RoomIntent =
   | { kind: "crossfade"; seconds: number }
   | { kind: "chat"; enabled: boolean }
   | { kind: "keyControl"; value: KeyControl }
+  | { kind: "voiceRoom"; address: string }
   | { kind: "vocalCut"; amount: number }
   | { kind: "eq"; eq: RoomEq }
   | { kind: "cohost"; memberId: string; enabled: boolean }
@@ -225,7 +228,7 @@ export type RoomIntent =
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
-  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "vocalCut", "eq",
+  "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "vocalCut", "eq", "voiceRoom",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -233,7 +236,7 @@ export type GuestIntent = Extract<
   RoomIntent,
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
-    | "bomb" | "standingsReset" | "tournament" | "vocalCut" | "eq" }
+    | "bomb" | "standingsReset" | "tournament" | "vocalCut" | "eq" | "voiceRoom" }
 >;
 
 export type RoomEvent =
@@ -285,7 +288,7 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
     vocalCut: 0, eq: { ...FLAT_EQ }, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
-    cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
+    voiceRoom: "", cohosts: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
     standings: [], tournament: null, hostOffset: 0,
   };
@@ -378,6 +381,10 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return intent.enabled === state.chat ? state : { ...state, chat: intent.enabled };
     case "keyControl":
       return intent.value === state.keyControl ? state : { ...state, keyControl: intent.value };
+    case "voiceRoom": {
+      const address = parseVoiceRoom(intent.address);
+      return address === state.voiceRoom ? state : { ...state, voiceRoom: address };
+    }
     case "eq": {
       const eq = parseEq(intent.eq);
       return isFlatEq({ low: eq.low - state.eq.low, mid: eq.mid - state.eq.mid, high: eq.high - state.eq.high })
@@ -576,6 +583,16 @@ export function mayChangeKey(state: RoomState, from: string | undefined) {
   return false;
 }
 
+/** A Jamulus address is a host name or IP with an optional port; anything else is not one. */
+const VOICE_ROOM_PATTERN = /^[a-z0-9.-]{1,60}(:\d{1,5})?$/i;
+export const MAX_VOICE_ROOM = 66;
+
+export function parseVoiceRoom(value: unknown) {
+  if (typeof value !== "string") return "";
+  const address = value.trim().replace(/^jamulus:\/\//i, "").replace(/\/+$/, "").slice(0, MAX_VOICE_ROOM);
+  return VOICE_ROOM_PATTERN.test(address) ? address : "";
+}
+
 export function sanitizeChat(text: unknown) {
   return typeof text === "string" ? text.replace(/\s+/g, " ").trim().slice(0, MAX_CHAT) : "";
 }
@@ -646,6 +663,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     keyHelper: value.keyHelper === true,
     chat: value.chat !== false,
     keyControl: parseKeyControl(value.keyControl),
+    voiceRoom: parseVoiceRoom(value.voiceRoom),
     cohosts: Array.isArray(value.cohosts) ? memberIds(value.cohosts).slice(0, MAX_COHOSTS) : [],
     queueLimit: QUEUE_LIMITS.find((option) => option === value.queueLimit) ?? 0,
     queueOrder: QUEUE_ORDERS.find((option) => option === value.queueOrder) ?? "line",
@@ -800,6 +818,8 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
       return typeof value.seconds === "number" ? { kind: "bombSeconds", seconds: value.seconds } : null;
     case "vocalCut":
       return typeof value.amount === "number" ? { kind: "vocalCut", amount: value.amount } : null;
+    case "voiceRoom":
+      return typeof value.address === "string" ? { kind: "voiceRoom", address: value.address } : null;
     case "eq":
       return { kind: "eq", eq: parseEq(value.eq) };
     case "vote": {

@@ -12,6 +12,7 @@ import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { EqControl, KeyControl, RoomQr, VocalCutSelect } from "./room-panels";
 import type { RoomModel, Toast } from "./room-model";
 import { Art, ToastStack } from "./ui";
+import { VoiceRoomCard } from "./voice-room";
 
 const UP_NEXT_LIMIT = 4;
 const QR_KEY = "sidewave-tv-qr";
@@ -183,6 +184,12 @@ export function TvRoom({
             <EqControl value={state.eq} canManage={canManage} dispatch={dispatch} />
             <KeyHelperStatusLine status={keyHelperStatus} onOpenSetup={onOpenKaraokeSetup} />
             <KeyHelperProbe active={keyHelperStatus === "checking"} />
+          </section>
+        )}
+
+        {state.voiceRoom && (
+          <section className="card side-voice" aria-label="ห้องเสียง">
+            <VoiceRoomCard address={state.voiceRoom} />
           </section>
         )}
 
