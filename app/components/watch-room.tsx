@@ -74,7 +74,7 @@ export function WatchRoom({
             <strong>{state.nowPlaying?.title ?? "รอวิดีโอแรกของห้อง"}</strong>
             {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
           </div>
-          <PlaybackButtons state={state} dispatch={dispatch} />
+          <PlaybackButtons state={state} dispatch={dispatch} canSkip={model.canSkip} />
         </div>
         {state.spotlight && (
           <SpotlightBanner spotlight={state.spotlight} mine={state.spotlight.memberId === selfId} place="phone" />

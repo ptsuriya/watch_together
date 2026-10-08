@@ -379,6 +379,8 @@ export default function RoomClient({
         const manager = isManager(state, fromId);
         // Running the queue and the room's settings is for the host and the co-hosts they picked.
         if (MANAGER_INTENTS.some((kind) => kind === intent.kind) && !manager) return;
+        // In a watch room only the host skips, co-hosts included out.
+        if (intent.kind === "next" && state.mode === "watch") return;
         // Guests write the notes only while the host has shared them.
         if (intent.kind === "notes" && !state.notesShared && !manager) return;
         // The host decides who may change the key: only the host, only whoever queued the song, or anyone.
@@ -725,8 +727,9 @@ export default function RoomClient({
 
   const inviteUrl = `${appOrigin}/?room=${roomCode}&mode=${state.mode}`;
   const canManage = isHost || isManager(state, selfId) || !realtimeConfigured;
+  const canSkip = isHost || !realtimeConfigured || state.mode !== "watch";
   const model: RoomModel = {
-    state, isHost, canManage, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
+    state, isHost, canManage, canSkip, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
   };
   const tvScreen = isHost && !hasOwnScreens(state.mode);
   const waiting = !isHost && realtimeConfigured && !synced;

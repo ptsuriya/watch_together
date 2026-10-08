@@ -115,10 +115,11 @@ export function YouTubeSearch({ karaoke }: { karaoke: boolean }) {
   );
 }
 
-export function PlaybackButtons({ state, dispatch, size = "md" }: {
+export function PlaybackButtons({ state, dispatch, size = "md", canSkip = true }: {
   state: RoomState;
   dispatch: (intent: RoomIntent) => void;
   size?: "md" | "lg";
+  canSkip?: boolean;
 }) {
   const className = size === "lg" ? "btn-round btn-round-lg" : "btn-round";
   return (
@@ -136,8 +137,9 @@ export function PlaybackButtons({ state, dispatch, size = "md" }: {
         type="button"
         className={`btn btn-secondary ${className}`}
         onClick={() => dispatch({ kind: "next" })}
-        disabled={!state.nowPlaying && state.queue.length === 0}
-        aria-label="ข้ามไปเพลงถัดไป"
+        disabled={!canSkip || (!state.nowPlaying && state.queue.length === 0)}
+        aria-label={canSkip ? "ข้ามไปเพลงถัดไป" : "เฉพาะหัวห้องข้ามได้"}
+        title={canSkip ? undefined : "เฉพาะหัวห้องข้ามได้"}
       >
         <SkipForward size={20} fill="currentColor" aria-hidden="true" />
       </button>

@@ -11,6 +11,8 @@ export type RoomModel = {
   isHost: boolean;
   /** The host, or someone the host made a co-host: may run the queue and the room's settings. */
   canManage: boolean;
+  /** May skip to the next video: in a watch room only the host can. */
+  canSkip: boolean;
   selfId: string | null;
   selfName: string;
   members: RoomMember[];
