@@ -1,7 +1,7 @@
 "use client";
 
-import { UserPlus } from "lucide-react";
-import type { ReactNode } from "react";
+import { NotebookText, UserPlus } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import type { HelperAi, HelperStatus } from "../../lib/karaoke-key";
 import { mayChangeKey, singerOf } from "../../lib/room-state";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
@@ -53,7 +53,10 @@ export function WatchRoom({
   const memberCount = members.length || 1;
   const karaoke = state.mode === "singalong";
   // Karaoke videos carry their own lyrics, so a sing-along gives the whole row to the video instead.
-  const showNotes = state.notesOn && !karaoke;
+  // Each viewer can also fold the notes away for themselves; the video then takes the whole row.
+  const [notesHidden, setNotesHidden] = useState(false);
+  const notesAvailable = state.notesOn && !karaoke;
+  const showNotes = notesAvailable && !notesHidden;
   const canChangeKey = canManage || mayChangeKey(state, selfName);
 
   return (
@@ -74,6 +77,16 @@ export function WatchRoom({
             <strong>{state.nowPlaying?.title ?? "รอวิดีโอแรกของห้อง"}</strong>
             {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
           </div>
+          {notesAvailable && (
+            <button
+              type="button"
+              className={`btn btn-secondary btn-sm notes-fold${showNotes ? " is-on" : ""}`}
+              aria-pressed={showNotes}
+              onClick={() => setNotesHidden((hidden) => !hidden)}
+            >
+              <NotebookText size={16} aria-hidden="true" /> {showNotes ? "ซ่อนเนื้อเพลง" : "แสดงเนื้อเพลง"}
+            </button>
+          )}
           <PlaybackButtons state={state} dispatch={dispatch} canSkip={model.canSkip} />
         </div>
         {state.spotlight && (
