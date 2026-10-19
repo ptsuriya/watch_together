@@ -145,7 +145,7 @@ export function TvRoom({
           <small>{state.nowPlaying ? (state.isPlaying ? "กำลังเล่น" : "หยุดชั่วคราว") : "ยังไม่มีเพลง"}</small>
           <strong>{state.nowPlaying?.title ?? "รอเพลงแรกจากรีโมท"}</strong>
           {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
-          <PlaybackButtons state={state} dispatch={dispatch} />
+          <PlaybackButtons state={state} dispatch={dispatch} canPlay={model.canPlay} />
         </section>
 
         <DraftPicker state={state} selfName={selfName} dispatch={dispatch} />

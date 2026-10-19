@@ -70,6 +70,8 @@ export type RoomState = {
   keyHelper: boolean;
   /** Messages from phones fly across the screen. */
   chat: boolean;
+  /** Only the host and co-hosts may play and pause; everyone else watches along. */
+  playLock: boolean;
   /** A Jamulus server the room sings through, as host[:port]. Empty when the room is not using one. */
   voiceRoom: string;
   /** Who may change the key: the host alone, the person who queued the song, or anyone in the room. */
@@ -236,6 +238,7 @@ export type RoomIntent =
   | { kind: "notesShared"; shared: boolean }
   | { kind: "crossfade"; seconds: number }
   | { kind: "chat"; enabled: boolean }
+  | { kind: "playLock"; enabled: boolean }
   | { kind: "keyControl"; value: KeyControl }
   | { kind: "voiceRoom"; address: string }
   | { kind: "vocalCut"; amount: number }
@@ -268,14 +271,14 @@ export type RoomIntent =
 
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
-  "remove", "jump", "mode", "crossfade", "chat", "notesOn", "notesShared",
+  "remove", "jump", "mode", "crossfade", "chat", "playLock", "notesOn", "notesShared",
   "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "tournamentTheme", "vocalCut", "vocalAi", "eq", "voiceRoom", "kick", "unban",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
 export type GuestIntent = Extract<
   RoomIntent,
-  { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat"
+  { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat" | "playLock"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
     | "bomb" | "standingsReset" | "tournament" | "tournamentPick" | "tournamentTheme" | "vocalCut" | "vocalAi" | "eq"
     | "voiceRoom" | "kick" | "unban" }
@@ -356,7 +359,7 @@ export function isVideoId(value: unknown): value is string {
 export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
     session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
-    vocalCut: 0, vocalAi: true, eq: { ...FLAT_EQ }, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, keyControl: "everyone",
+    vocalCut: 0, vocalAi: true, eq: { ...FLAT_EQ }, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, playLock: false, keyControl: "everyone",
     voiceRoom: "", cohosts: [], banned: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
     standings: [], tournament: null, hostOffset: 0,
@@ -446,6 +449,8 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       const seconds = parseCrossfade(intent.seconds);
       return seconds === state.crossfade ? state : { ...state, crossfade: seconds };
     }
+    case "playLock":
+      return intent.enabled === state.playLock ? state : { ...state, playLock: intent.enabled };
     case "chat":
       return intent.enabled === state.chat ? state : { ...state, chat: intent.enabled };
     case "keyControl":
@@ -842,6 +847,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     crossfade: parseCrossfade(value.crossfade),
     keyHelper: value.keyHelper === true,
     chat: value.chat !== false,
+    playLock: value.playLock === true,
     keyControl: parseKeyControl(value.keyControl),
     voiceRoom: parseVoiceRoom(value.voiceRoom),
     cohosts: Array.isArray(value.cohosts) ? memberIds(value.cohosts).slice(0, MAX_COHOSTS) : [],
@@ -993,6 +999,8 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
     }
     case "crossfade":
       return typeof value.seconds === "number" ? { kind: "crossfade", seconds: value.seconds } : null;
+    case "playLock":
+      return typeof value.enabled === "boolean" ? { kind: "playLock", enabled: value.enabled } : null;
     case "chat":
       return typeof value.enabled === "boolean" ? { kind: "chat", enabled: value.enabled } : null;
     case "notesOn":

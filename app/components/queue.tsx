@@ -115,11 +115,12 @@ export function YouTubeSearch({ karaoke }: { karaoke: boolean }) {
   );
 }
 
-export function PlaybackButtons({ state, dispatch, size = "md", canSkip = true }: {
+export function PlaybackButtons({ state, dispatch, size = "md", canSkip = true, canPlay = true }: {
   state: RoomState;
   dispatch: (intent: RoomIntent) => void;
   size?: "md" | "lg";
   canSkip?: boolean;
+  canPlay?: boolean;
 }) {
   const className = size === "lg" ? "btn-round btn-round-lg" : "btn-round";
   return (
@@ -128,7 +129,8 @@ export function PlaybackButtons({ state, dispatch, size = "md", canSkip = true }
         type="button"
         className={`btn btn-primary ${className}`}
         onClick={() => dispatch({ kind: state.isPlaying ? "pause" : "play" })}
-        disabled={!state.nowPlaying}
+        disabled={!state.nowPlaying || !canPlay}
+        title={canPlay ? undefined : "เฉพาะหัวห้องกดเล่นหรือหยุดได้"}
         aria-label={state.isPlaying ? "หยุดชั่วคราว" : "เล่น"}
       >
         {state.isPlaying ? <Pause size={20} fill="currentColor" aria-hidden="true" /> : <Play size={20} fill="currentColor" aria-hidden="true" />}

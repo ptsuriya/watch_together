@@ -47,7 +47,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
           <strong>{state.nowPlaying?.title ?? "เพิ่มเพลงแรกได้เลย"}</strong>
           {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
         </div>
-        <PlaybackButtons state={state} dispatch={dispatch} size="lg" />
+        <PlaybackButtons state={state} dispatch={dispatch} size="lg" canPlay={model.canPlay} />
       </section>
 
       <TournamentFlashCard state={state} />

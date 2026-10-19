@@ -379,6 +379,8 @@ export default function RoomClient({
         const manager = isManager(state, fromId);
         // Running the queue and the room's settings is for the host and the co-hosts they picked.
         if (MANAGER_INTENTS.some((kind) => kind === intent.kind) && !manager) return;
+        // With the play lock on, only the host and co-hosts start and stop the video.
+        if ((intent.kind === "play" || intent.kind === "pause") && state.playLock && !manager) return;
         // In a watch room only the host skips, co-hosts included out.
         if (intent.kind === "next" && state.mode === "watch") return;
         // Guests write the notes only while the host has shared them.
@@ -727,9 +729,10 @@ export default function RoomClient({
 
   const inviteUrl = `${appOrigin}/?room=${roomCode}&mode=${state.mode}`;
   const canManage = isHost || isManager(state, selfId) || !realtimeConfigured;
+  const canPlay = canManage || !state.playLock;
   const canSkip = isHost || !realtimeConfigured || state.mode !== "watch";
   const model: RoomModel = {
-    state, isHost, canManage, canSkip, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
+    state, isHost, canManage, canPlay, canSkip, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
   };
   const tvScreen = isHost && !hasOwnScreens(state.mode);
   const waiting = !isHost && realtimeConfigured && !synced;

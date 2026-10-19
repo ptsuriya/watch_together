@@ -11,7 +11,7 @@ import {
   type TourFormat, type TourSeeding,
 } from "../../lib/room-state";
 import type { RoomModel } from "./room-model";
-import { ChatToggle, CrossfadeSelect, KeyControlSelect, NotesToggle } from "./room-panels";
+import { ChatToggle, CrossfadeSelect, KeyControlSelect, NotesToggle, PlayLockToggle } from "./room-panels";
 import { VoiceRoomField } from "./voice-room";
 import CountUp from "./bits/count-up";
 import HoldButton from "./bits/hold-button";
@@ -232,6 +232,7 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
           <div className="party-chips">
             <CrossfadeSelect value={state.crossfade} dispatch={dispatch} />
             <ChatToggle enabled={state.chat} dispatch={dispatch} />
+            <PlayLockToggle enabled={state.playLock} dispatch={dispatch} />
             {/* Only the watch layout has a notes panel to hide. */}
             {state.mode === "watch" && <NotesToggle enabled={state.notesOn} dispatch={dispatch} />}
           </div>

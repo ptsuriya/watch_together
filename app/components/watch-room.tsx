@@ -87,7 +87,7 @@ export function WatchRoom({
               <NotebookText size={16} aria-hidden="true" /> {showNotes ? "ซ่อนเนื้อเพลง" : "แสดงเนื้อเพลง"}
             </button>
           )}
-          <PlaybackButtons state={state} dispatch={dispatch} canSkip={model.canSkip} />
+          <PlaybackButtons state={state} dispatch={dispatch} canSkip={model.canSkip} canPlay={model.canPlay} />
         </div>
         {state.spotlight && (
           <SpotlightBanner spotlight={state.spotlight} mine={state.spotlight.memberId === selfId} place="phone" />

@@ -4,7 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   AArrowDown, AArrowUp, Check, ChevronDown, Copy, Crown, HelpCircle, Maximize, Maximize2, Mic, MicOff, MicVocal, Minus, MonitorPlay,
   Plus, QrCode, RotateCcw, SlidersHorizontal, Sparkles, Tv, UserMinus,
-  MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
+  Lock, LockOpen, MessageSquare, MessageSquareOff, NotebookPen, NotebookText, ShieldCheck, ShieldOff, UserRound, UsersRound,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { HelperAi } from "../../lib/karaoke-key";
@@ -524,6 +524,21 @@ export function NotesToggle({ enabled, dispatch }: { enabled: boolean; dispatch:
     >
       {enabled ? <NotebookText size={16} aria-hidden="true" /> : <NotebookPen size={16} aria-hidden="true" />}
       โน้ต
+    </button>
+  );
+}
+
+export function PlayLockToggle({ enabled, dispatch }: { enabled: boolean; dispatch: (intent: RoomIntent) => void }) {
+  return (
+    <button
+      type="button"
+      className={`pill notes-toggle${enabled ? " is-on" : ""}`}
+      aria-pressed={enabled}
+      onClick={() => dispatch({ kind: "playLock", enabled: !enabled })}
+      title={enabled ? "ให้ทุกคนกดเล่น/หยุดได้" : "ให้เฉพาะหัวห้องกดเล่น/หยุด"}
+    >
+      {enabled ? <Lock size={16} aria-hidden="true" /> : <LockOpen size={16} aria-hidden="true" />}
+      เฉพาะหัวห้องเล่น/หยุด
     </button>
   );
 }

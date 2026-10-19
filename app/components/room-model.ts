@@ -13,6 +13,8 @@ export type RoomModel = {
   canManage: boolean;
   /** May skip to the next video: in a watch room only the host can. */
   canSkip: boolean;
+  /** False while the host has locked play and pause and this viewer is not managing. */
+  canPlay: boolean;
   selfId: string | null;
   selfName: string;
   members: RoomMember[];
