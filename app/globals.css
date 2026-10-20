@@ -1207,6 +1207,39 @@ select.field { padding-right: 8px; }
 .wheel-result b { color: var(--bark); font-size: 20px; font-weight: 800; }
 .wheel-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .wheel-editor { display: grid; gap: 6px; width: 100%; }
+
+/* A spin lifts the wheel out over the video, so the whole room looks at one thing. */
+.wheel-slot { display: grid; }
+.wheel-away { align-self: center; }
+.wheel-panel.is-focus {
+  position: fixed; inset: 0; z-index: 50; align-content: center; gap: 14px; padding: 24px 16px;
+  border: 0; border-radius: 0; background: rgba(42, 16, 16, 0.86); backdrop-filter: blur(4px);
+  animation: wheel-lift 0.25s ease-out;
+}
+.wheel-panel.is-focus .wheel-title { color: var(--cream); font-size: clamp(22px, 4vw, 34px); }
+.wheel-panel.is-focus .wheel-stage { width: min(88vw, 58dvh, 560px); }
+.wheel-panel.is-focus .wheel-result { color: var(--honey); font-size: 18px; }
+.wheel-close { position: absolute; top: 16px; right: 16px; }
+.wheel-winner {
+  display: grid; justify-items: center; padding: 14px 32px;
+  border: 2px solid var(--bark); border-radius: 22px; background: var(--gold); box-shadow: var(--shadow-lg);
+  color: var(--bark); text-align: center; animation: wheel-pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.wheel-winner small { font-size: 15px; font-weight: 700; }
+.wheel-winner strong { font-size: clamp(30px, 7vw, 56px); font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+@keyframes wheel-lift { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wheel-pop { from { scale: 0.6; opacity: 0; } to { scale: 1; opacity: 1; } }
+
+.timer-alarm {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px;
+  background: rgba(42, 16, 16, 0.78); animation: wheel-lift 0.2s ease-out;
+}
+.timer-alarm-card {
+  display: grid; justify-items: center; gap: 12px; padding: 28px 36px;
+  border: 2px solid var(--bark); border-radius: var(--radius-card); background: var(--sand); box-shadow: var(--shadow-lg);
+  color: var(--terra-deep); animation: wheel-pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1), timer-ring 0.5s ease-in-out 0.35s 3;
+}
+.timer-alarm-card strong { font-size: clamp(36px, 8vw, 64px); font-weight: 800; line-height: 1.1; }
 .wheel-names { height: 140px; font-size: 15px; line-height: 1.6; }
 
 .timer-panel {

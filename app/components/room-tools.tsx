@@ -8,10 +8,13 @@ import {
   type RoomIntent, type RoomState, type RoomTimer, type Wheel,
 } from "../../lib/room-state";
 import { celebrate, originOf } from "./celebrate";
+import { playAlarm, playChime, playSpinTicks } from "./sound";
 
 /** Whole turns per second of spin before the wheel slows onto its name, so nobody can call it early. */
 const TURNS_PER_SECOND = 1.5;
 const MIN_TURNS = 2;
+/** How long the "time's up" card stays over the video unless someone closes it. */
+const ALARM_SHOW_MS = 8000;
 const SLICE_COLORS = ["#EEC65D", "#FFF0CC", "#C86858", "#7AA36F", "#C07B2A", "#FAE4DC"];
 
 function clock(seconds: number) {
@@ -104,119 +107,172 @@ function WheelPanel({ wheel, index, canManage, members, dispatch }: {
   const [editing, setEditing] = useState(false);
   // What this screen has shown so far. A new spin number from the host is what sets it turning.
   // The spin keeps the length it started with, even if the host changes it while the wheel is still turning.
-  const [view, setView] = useState(() => ({ spin: wheel.spin, rotation: restingAngle(wheel), spinning: false, ms: 0 }));
+  // focus: the wheel has lifted out over the video, so the whole room watches the same thing.
+  const [view, setView] = useState(() => ({
+    spin: wheel.spin, rotation: restingAngle(wheel), turned: 0, slice: 0, spinning: false, ms: 0, focus: false,
+  }));
   if (view.spin !== wheel.spin) {
-    setView({ spin: wheel.spin, rotation: spunTo(view.rotation, wheel), spinning: wheel.pick !== null, ms: wheel.seconds * 1000 });
+    const rotation = spunTo(view.rotation, wheel);
+    const spinning = wheel.pick !== null;
+    setView({
+      spin: wheel.spin, rotation, turned: rotation - view.rotation, slice: 360 / Math.max(1, wheel.names.length),
+      spinning, ms: wheel.seconds * 1000, focus: spinning,
+    });
   }
-
-  useEffect(() => {
-    if (!view.spinning) return;
-    const timeoutId = window.setTimeout(() => {
-      setView((current) => ({ ...current, spinning: false }));
-      celebrate("pop", originOf(discRef.current));
-    }, view.ms);
-    return () => window.clearTimeout(timeoutId);
-  }, [view.ms, view.spin, view.spinning]);
 
   const count = wheel.names.length;
   const slice = count > 0 ? 360 / count : 360;
+
+  useEffect(() => {
+    if (!view.spinning) return;
+    playSpinTicks(view.turned, view.slice, view.ms);
+    const timeoutId = window.setTimeout(() => {
+      setView((current) => ({ ...current, spinning: false }));
+      playChime();
+      celebrate("cheer", originOf(discRef.current));
+    }, view.ms);
+    return () => window.clearTimeout(timeoutId);
+  }, [view.ms, view.slice, view.spin, view.spinning, view.turned]);
+
+  // Escape puts the wheel back in its card, on this screen only.
+  const focused = view.focus;
+  useEffect(() => {
+    if (!focused) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setView((current) => ({ ...current, focus: false }));
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [focused]);
+
   const picked = !view.spinning && wheel.pick !== null ? wheel.names[wheel.pick] : null;
   const fontSize = count > 16 ? 6 : count > 10 ? 8 : 10;
 
+  const close = () => setView((current) => ({ ...current, focus: false }));
+
   return (
-    <div className="wheel-panel">
-      <strong className="wheel-title">{wheel.title}</strong>
-      <div ref={discRef} className="wheel-stage">
-        <span className="wheel-pointer" aria-hidden="true" />
-        <svg viewBox="-104 -104 208 208" className="wheel-svg" role="img" aria-label={`${wheel.title} มี ${count} ชื่อ`}>
-          <g className={`wheel-disc${view.spinning ? " is-spinning" : ""}`} style={{ transform: `rotate(${view.rotation}deg)`, transitionDuration: view.spinning ? `${view.ms}ms` : undefined }}>
-            {count === 0 && <circle r="100" className="wheel-empty" />}
-            {count === 1 && <circle r="100" fill={SLICE_COLORS[0]} stroke="#2A1010" strokeWidth="2" />}
-            {count > 1 && wheel.names.map((_, at) => {
-              const [x1, y1] = point(at * slice, 100);
-              const [x2, y2] = point((at + 1) * slice, 100);
-              const large = slice > 180 ? 1 : 0;
-              // The last slice never takes the first one's colour, so the two never run together.
-              const wraps = at === count - 1 && count % SLICE_COLORS.length === 1;
-              const color = SLICE_COLORS[(wraps ? at + 1 : at) % SLICE_COLORS.length];
-              return (
-                <path
-                  key={at}
-                  d={`M0 0L${x1.toFixed(2)} ${y1.toFixed(2)}A100 100 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}Z`}
-                  fill={color}
-                  stroke="#2A1010"
-                  strokeWidth="1.5"
-                />
-              );
-            })}
-            {count === 1 && (
-              <text className="wheel-label" fontSize={fontSize} y="-50" textAnchor="middle" dominantBaseline="central">{wheel.names[0]}</text>
+    <div className="wheel-slot">
+      {view.focus && <p className="empty-note wheel-away">กำลังหมุนให้ทั้งห้องดู…</p>}
+      {/* The same element moves out over the video and back, so the spin carries on without a jump. */}
+      <div
+        className={`wheel-panel${view.focus ? " is-focus" : ""}`}
+        role={view.focus ? "dialog" : undefined}
+        aria-modal={view.focus || undefined}
+        aria-label={view.focus ? wheel.title : undefined}
+        onClick={view.focus && !view.spinning ? (event) => {
+          if (event.target === event.currentTarget) close();
+        } : undefined}
+      >
+        {view.focus && !view.spinning && (
+          <button type="button" className="icon-btn wheel-close" onClick={close} aria-label="ปิด">
+            <X size={20} aria-hidden="true" />
+          </button>
+        )}
+        <strong className="wheel-title">{wheel.title}</strong>
+        <div ref={discRef} className="wheel-stage">
+          <span className="wheel-pointer" aria-hidden="true" />
+          <svg viewBox="-104 -104 208 208" className="wheel-svg" role="img" aria-label={`${wheel.title} มี ${count} ชื่อ`}>
+            <g className={`wheel-disc${view.spinning ? " is-spinning" : ""}`} style={{ transform: `rotate(${view.rotation}deg)`, transitionDuration: view.spinning ? `${view.ms}ms` : undefined }}>
+              {count === 0 && <circle r="100" className="wheel-empty" />}
+              {count === 1 && <circle r="100" fill={SLICE_COLORS[0]} stroke="#2A1010" strokeWidth="2" />}
+              {count > 1 && wheel.names.map((_, at) => {
+                const [x1, y1] = point(at * slice, 100);
+                const [x2, y2] = point((at + 1) * slice, 100);
+                const large = slice > 180 ? 1 : 0;
+                // The last slice never takes the first one's colour, so the two never run together.
+                const wraps = at === count - 1 && count % SLICE_COLORS.length === 1;
+                const color = SLICE_COLORS[(wraps ? at + 1 : at) % SLICE_COLORS.length];
+                return (
+                  <path
+                    key={at}
+                    d={`M0 0L${x1.toFixed(2)} ${y1.toFixed(2)}A100 100 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}Z`}
+                    fill={color}
+                    stroke="#2A1010"
+                    strokeWidth="1.5"
+                  />
+                );
+              })}
+              {count === 1 && (
+                <text className="wheel-label" fontSize={fontSize} y="-50" textAnchor="middle" dominantBaseline="central">{wheel.names[0]}</text>
+              )}
+              {count > 1 && wheel.names.map((name, at) => {
+                const middle = (at + 0.5) * slice;
+                return (
+                  <text
+                    key={at}
+                    className="wheel-label"
+                    fontSize={fontSize}
+                    transform={`rotate(${middle - 90}) translate(92 0)`}
+                    textAnchor="end"
+                    dominantBaseline="central"
+                  >
+                    {name.length > 12 ? `${name.slice(0, 11)}…` : name}
+                  </text>
+                );
+              })}
+            </g>
+            <circle r="9" className="wheel-hub" />
+          </svg>
+        </div>
+        {view.focus && picked ? (
+          <div className="wheel-winner" aria-live="assertive">
+            <small>ได้แก่</small>
+            <strong>{picked}</strong>
+          </div>
+        ) : (
+          <p className="wheel-result" aria-live="polite">
+            {view.spinning ? "กำลังหมุน…" : picked ? <>ได้ <b>{picked}</b></> : count < 2 ? "ใส่ชื่ออย่างน้อย 2 ชื่อ" : "พร้อมหมุน"}
+          </p>
+        )}
+        {canManage && (
+          <div className="wheel-actions">
+            <button
+              type="button"
+              className="btn btn-honey btn-sm"
+              disabled={count < 2 || view.spinning}
+              onClick={() => dispatch({ kind: "wheelSpin", index })}
+            >
+              <FerrisWheel size={16} aria-hidden="true" /> {view.focus ? "หมุนอีกครั้ง" : "หมุน"}
+            </button>
+            {picked && wheel.pick !== null && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => dispatch({ kind: "wheel", index, names: wheel.names.filter((_, at) => at !== wheel.pick) })}
+              >
+                <Trash2 size={16} aria-hidden="true" /> เอาชื่อนี้ออก
+              </button>
             )}
-            {count > 1 && wheel.names.map((name, at) => {
-              const middle = (at + 0.5) * slice;
-              return (
-                <text
-                  key={at}
-                  className="wheel-label"
-                  fontSize={fontSize}
-                  transform={`rotate(${middle - 90}) translate(92 0)`}
-                  textAnchor="end"
-                  dominantBaseline="central"
-                >
-                  {name.length > 12 ? `${name.slice(0, 11)}…` : name}
-                </text>
-              );
-            })}
-          </g>
-          <circle r="9" className="wheel-hub" />
-        </svg>
+            {!view.focus && (
+              <button type="button" className="btn btn-secondary btn-sm" aria-expanded={editing} onClick={() => setEditing((open) => !open)}>
+                <Pencil size={16} aria-hidden="true" /> {editing ? "ปิด" : "แก้ชื่อ"}
+              </button>
+            )}
+          </div>
+        )}
+        {view.focus && !view.spinning && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={close}>กลับไปดูวิดีโอ</button>
+        )}
+        {canManage && !view.focus && (
+          <div className="party-chips wheel-speed" role="group" aria-label="หมุนนานเท่าไรก่อนแสดงผล">
+            <span>แสดงผลใน</span>
+            {WHEEL_SPIN_SECONDS.map((seconds) => (
+              <button
+                key={seconds}
+                type="button"
+                className={`chip-btn${wheel.seconds === seconds ? " is-on" : ""}`}
+                aria-pressed={wheel.seconds === seconds}
+                onClick={() => dispatch({ kind: "wheel", index, seconds })}
+              >
+                {seconds} วิ
+              </button>
+            ))}
+          </div>
+        )}
+        {canManage && editing && !view.focus && (
+          <WheelEditor wheel={wheel} index={index} members={members} dispatch={dispatch} onDone={() => setEditing(false)} />
+        )}
       </div>
-      <p className="wheel-result" aria-live="polite">
-        {view.spinning ? "กำลังหมุน…" : picked ? <>ได้ <b>{picked}</b></> : count < 2 ? "ใส่ชื่ออย่างน้อย 2 ชื่อ" : "พร้อมหมุน"}
-      </p>
-      {canManage && (
-        <div className="wheel-actions">
-          <button
-            type="button"
-            className="btn btn-honey btn-sm"
-            disabled={count < 2 || view.spinning}
-            onClick={() => dispatch({ kind: "wheelSpin", index })}
-          >
-            <FerrisWheel size={16} aria-hidden="true" /> หมุน
-          </button>
-          {picked && wheel.pick !== null && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => dispatch({ kind: "wheel", index, names: wheel.names.filter((_, at) => at !== wheel.pick) })}
-            >
-              <Trash2 size={16} aria-hidden="true" /> เอาชื่อนี้ออก
-            </button>
-          )}
-          <button type="button" className="btn btn-secondary btn-sm" aria-expanded={editing} onClick={() => setEditing((open) => !open)}>
-            <Pencil size={16} aria-hidden="true" /> {editing ? "ปิด" : "แก้ชื่อ"}
-          </button>
-        </div>
-      )}
-      {canManage && (
-        <div className="party-chips wheel-speed" role="group" aria-label="หมุนนานเท่าไรก่อนแสดงผล">
-          <span>แสดงผลใน</span>
-          {WHEEL_SPIN_SECONDS.map((seconds) => (
-            <button
-              key={seconds}
-              type="button"
-              className={`chip-btn${wheel.seconds === seconds ? " is-on" : ""}`}
-              aria-pressed={wheel.seconds === seconds}
-              onClick={() => dispatch({ kind: "wheel", index, seconds })}
-            >
-              {seconds} วิ
-            </button>
-          ))}
-        </div>
-      )}
-      {canManage && editing && (
-        <WheelEditor wheel={wheel} index={index} members={members} dispatch={dispatch} onDone={() => setEditing(false)} />
-      )}
     </div>
   );
 }
@@ -278,15 +334,20 @@ function TimerPanel({ timer, canManage, dispatch }: {
   const [seconds, setSeconds] = useState(String(timer.total % 60));
   const done = timer.left === 0 && !timer.running;
 
-  // The moment it runs out, every screen rings, not only the host's.
-  const doneRef = useRef(done);
+  // The moment it runs out, every screen rings and says so over the video, not only the host's.
+  const [seenDone, setSeenDone] = useState(done);
+  const [alarm, setAlarm] = useState(false);
+  if (seenDone !== done) {
+    setSeenDone(done);
+    setAlarm(done);
+  }
   useEffect(() => {
-    if (done && !doneRef.current) {
-      ring();
-      celebrate("cheer");
-    }
-    doneRef.current = done;
-  }, [done]);
+    if (!alarm) return;
+    playAlarm();
+    celebrate("cheer");
+    const timeoutId = window.setTimeout(() => setAlarm(false), ALARM_SHOW_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [alarm]);
 
   function setCustom() {
     const total = (Number(minutes) || 0) * 60 + (Number(seconds) || 0);
@@ -294,64 +355,76 @@ function TimerPanel({ timer, canManage, dispatch }: {
   }
 
   return (
-    <div className={`timer-panel${done ? " is-done" : ""}${timer.running ? " is-running" : ""}`}>
-      <div className="timer-face" aria-live={done ? "assertive" : "off"}>
-        <AlarmClock size={28} aria-hidden="true" />
-        {/* A fresh number from the host restarts the local tick, so every screen stays within a second of it. */}
-        <TimerClock key={`${timer.left}-${timer.running}`} left={timer.left} running={timer.running} />
-        <small>{done ? "หมดเวลาแล้ว!" : timer.running ? "กำลังนับถอยหลัง" : "หยุดอยู่"}</small>
-      </div>
-      {canManage && (
-        <>
-          <div className="wheel-actions">
-            {timer.running ? (
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => dispatch({ kind: "timer", action: "pause" })}>
-                <Pause size={16} fill="currentColor" aria-hidden="true" /> หยุด
-              </button>
-            ) : (
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => dispatch({ kind: "timer", action: "start" })}>
-                <Play size={16} fill="currentColor" aria-hidden="true" /> {done ? "เริ่มใหม่" : "เริ่ม"}
-              </button>
-            )}
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "timer", action: "reset" })}>
-              <TimerReset size={16} aria-hidden="true" /> รีเซ็ต
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "timer", action: "off" })}>
-              <X size={16} aria-hidden="true" /> ปิดตัวจับเวลา
-            </button>
+    <>
+      {/* Outside the panel: its shake turns it, and a turned parent would pin this inside it instead of the screen. */}
+      {alarm && (
+        <div className="timer-alarm" role="alertdialog" aria-modal="true" aria-label="หมดเวลา" onClick={() => setAlarm(false)}>
+          <div className="timer-alarm-card">
+            <AlarmClock size={56} aria-hidden="true" />
+            <strong>หมดเวลา!</strong>
+            <button type="button" className="btn btn-honey" onClick={() => setAlarm(false)}>รับทราบ</button>
           </div>
-          <div className="party-chips">
-            {TIMER_PRESETS.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                className={`chip-btn${timer.total === preset ? " is-on" : ""}`}
-                onClick={() => {
-                  setMinutes(String(preset / 60));
-                  setSeconds("0");
-                  dispatch({ kind: "timer", action: "set", seconds: preset });
-                }}
-              >
-                {preset / 60} นาที
-              </button>
-            ))}
-          </div>
-          <form
-            className="timer-custom"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setCustom();
-            }}
-          >
-            <label htmlFor={minutesId}>นาที</label>
-            <input id={minutesId} className="field" type="number" inputMode="numeric" min={0} max={99} value={minutes} onChange={(event) => setMinutes(event.target.value)} />
-            <label htmlFor={secondsId}>วินาที</label>
-            <input id={secondsId} className="field" type="number" inputMode="numeric" min={0} max={59} value={seconds} onChange={(event) => setSeconds(event.target.value)} />
-            <button type="submit" className="btn btn-secondary btn-sm">ตั้งเวลา</button>
-          </form>
-        </>
+        </div>
       )}
-    </div>
+      <div className={`timer-panel${done ? " is-done" : ""}${timer.running ? " is-running" : ""}`}>
+        <div className="timer-face" aria-live={done ? "assertive" : "off"}>
+          <AlarmClock size={28} aria-hidden="true" />
+          {/* A fresh number from the host restarts the local tick, so every screen stays within a second of it. */}
+          <TimerClock key={`${timer.left}-${timer.running}`} left={timer.left} running={timer.running} />
+          <small>{done ? "หมดเวลาแล้ว!" : timer.running ? "กำลังนับถอยหลัง" : "หยุดอยู่"}</small>
+        </div>
+        {canManage && (
+          <>
+            <div className="wheel-actions">
+              {timer.running ? (
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => dispatch({ kind: "timer", action: "pause" })}>
+                  <Pause size={16} fill="currentColor" aria-hidden="true" /> หยุด
+                </button>
+              ) : (
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => dispatch({ kind: "timer", action: "start" })}>
+                  <Play size={16} fill="currentColor" aria-hidden="true" /> {done ? "เริ่มใหม่" : "เริ่ม"}
+                </button>
+              )}
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "timer", action: "reset" })}>
+                <TimerReset size={16} aria-hidden="true" /> รีเซ็ต
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => dispatch({ kind: "timer", action: "off" })}>
+                <X size={16} aria-hidden="true" /> ปิดตัวจับเวลา
+              </button>
+            </div>
+            <div className="party-chips">
+              {TIMER_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className={`chip-btn${timer.total === preset ? " is-on" : ""}`}
+                  onClick={() => {
+                    setMinutes(String(preset / 60));
+                    setSeconds("0");
+                    dispatch({ kind: "timer", action: "set", seconds: preset });
+                  }}
+                >
+                  {preset / 60} นาที
+                </button>
+              ))}
+            </div>
+            <form
+              className="timer-custom"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setCustom();
+              }}
+            >
+              <label htmlFor={minutesId}>นาที</label>
+              <input id={minutesId} className="field" type="number" inputMode="numeric" min={0} max={99} value={minutes} onChange={(event) => setMinutes(event.target.value)} />
+              <label htmlFor={secondsId}>วินาที</label>
+              <input id={secondsId} className="field" type="number" inputMode="numeric" min={0} max={59} value={seconds} onChange={(event) => setSeconds(event.target.value)} />
+              <button type="submit" className="btn btn-secondary btn-sm">ตั้งเวลา</button>
+            </form>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -364,27 +437,4 @@ function TimerClock({ left, running }: { left: number; running: boolean }) {
     return () => window.clearInterval(intervalId);
   }, [running]);
   return <span className="timer-clock">{clock(value)}</span>;
-}
-
-/** Three short beeps. A browser that has not heard from the person yet may keep quiet, and that is fine. */
-function ring() {
-  try {
-    const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const context = new AudioCtx();
-    [0, 0.35, 0.7].forEach((at) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.frequency.value = 880;
-      gain.gain.setValueAtTime(0.0001, context.currentTime + at);
-      gain.gain.exponentialRampToValueAtTime(0.25, context.currentTime + at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + at + 0.25);
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start(context.currentTime + at);
-      oscillator.stop(context.currentTime + at + 0.3);
-    });
-    window.setTimeout(() => void context.close(), 1500);
-  } catch {
-    // No sound on this screen; the clock still says it.
-  }
 }
