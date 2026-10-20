@@ -4,15 +4,14 @@ import { AlarmClock, FerrisWheel, Pause, Pencil, Play, TimerReset, Trash2, Users
 import { useEffect, useId, useRef, useState } from "react";
 import type { RoomMember } from "../../lib/room-realtime";
 import {
-  MAX_TIMER_SECONDS, MAX_WHEEL_NAMES, TIMER_PRESETS, wheelNames,
+  MAX_TIMER_SECONDS, MAX_WHEEL_NAMES, TIMER_PRESETS, WHEEL_SPIN_SECONDS, wheelNames,
   type RoomIntent, type RoomState, type RoomTimer, type Wheel,
 } from "../../lib/room-state";
 import { celebrate, originOf } from "./celebrate";
 
-/** How long a spin takes to settle. The CSS transition on .wheel-disc uses the same number. */
-const SPIN_MS = 4200;
-/** Whole turns before the wheel slows onto its name, so nobody can call it early. */
-const SPIN_TURNS = 6;
+/** Whole turns per second of spin before the wheel slows onto its name, so nobody can call it early. */
+const TURNS_PER_SECOND = 1.5;
+const MIN_TURNS = 2;
 const SLICE_COLORS = ["#EEC65D", "#FFF0CC", "#C86858", "#7AA36F", "#C07B2A", "#FAE4DC"];
 
 function clock(seconds: number) {
@@ -40,7 +39,8 @@ function restingAngle(wheel: Wheel) {
 function spunTo(from: number, wheel: Wheel) {
   const target = restingAngle(wheel);
   const extra = (((target - from) % 360) + 360) % 360;
-  return from + SPIN_TURNS * 360 + extra;
+  const turns = Math.max(MIN_TURNS, Math.round(wheel.seconds * TURNS_PER_SECOND));
+  return from + turns * 360 + extra;
 }
 
 /** Watch together's extras: up to three name wheels the host turns on one at a time, and a countdown for the room. */
@@ -103,9 +103,10 @@ function WheelPanel({ wheel, index, canManage, members, dispatch }: {
   const discRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
   // What this screen has shown so far. A new spin number from the host is what sets it turning.
-  const [view, setView] = useState(() => ({ spin: wheel.spin, rotation: restingAngle(wheel), spinning: false }));
+  // The spin keeps the length it started with, even if the host changes it while the wheel is still turning.
+  const [view, setView] = useState(() => ({ spin: wheel.spin, rotation: restingAngle(wheel), spinning: false, ms: 0 }));
   if (view.spin !== wheel.spin) {
-    setView({ spin: wheel.spin, rotation: spunTo(view.rotation, wheel), spinning: wheel.pick !== null });
+    setView({ spin: wheel.spin, rotation: spunTo(view.rotation, wheel), spinning: wheel.pick !== null, ms: wheel.seconds * 1000 });
   }
 
   useEffect(() => {
@@ -113,9 +114,9 @@ function WheelPanel({ wheel, index, canManage, members, dispatch }: {
     const timeoutId = window.setTimeout(() => {
       setView((current) => ({ ...current, spinning: false }));
       celebrate("pop", originOf(discRef.current));
-    }, SPIN_MS);
+    }, view.ms);
     return () => window.clearTimeout(timeoutId);
-  }, [view.spin, view.spinning]);
+  }, [view.ms, view.spin, view.spinning]);
 
   const count = wheel.names.length;
   const slice = count > 0 ? 360 / count : 360;
@@ -128,7 +129,7 @@ function WheelPanel({ wheel, index, canManage, members, dispatch }: {
       <div ref={discRef} className="wheel-stage">
         <span className="wheel-pointer" aria-hidden="true" />
         <svg viewBox="-104 -104 208 208" className="wheel-svg" role="img" aria-label={`${wheel.title} มี ${count} ชื่อ`}>
-          <g className={`wheel-disc${view.spinning ? " is-spinning" : ""}`} style={{ transform: `rotate(${view.rotation}deg)` }}>
+          <g className={`wheel-disc${view.spinning ? " is-spinning" : ""}`} style={{ transform: `rotate(${view.rotation}deg)`, transitionDuration: view.spinning ? `${view.ms}ms` : undefined }}>
             {count === 0 && <circle r="100" className="wheel-empty" />}
             {count === 1 && <circle r="100" fill={SLICE_COLORS[0]} stroke="#2A1010" strokeWidth="2" />}
             {count > 1 && wheel.names.map((_, at) => {
@@ -195,6 +196,22 @@ function WheelPanel({ wheel, index, canManage, members, dispatch }: {
           <button type="button" className="btn btn-secondary btn-sm" aria-expanded={editing} onClick={() => setEditing((open) => !open)}>
             <Pencil size={16} aria-hidden="true" /> {editing ? "ปิด" : "แก้ชื่อ"}
           </button>
+        </div>
+      )}
+      {canManage && (
+        <div className="party-chips wheel-speed" role="group" aria-label="หมุนนานเท่าไรก่อนแสดงผล">
+          <span>แสดงผลใน</span>
+          {WHEEL_SPIN_SECONDS.map((seconds) => (
+            <button
+              key={seconds}
+              type="button"
+              className={`chip-btn${wheel.seconds === seconds ? " is-on" : ""}`}
+              aria-pressed={wheel.seconds === seconds}
+              onClick={() => dispatch({ kind: "wheel", index, seconds })}
+            >
+              {seconds} วิ
+            </button>
+          ))}
         </div>
       )}
       {canManage && editing && (

@@ -119,6 +119,8 @@ export type Wheel = {
   spin: number;
   /** Where the last spin landed, as an index into names; null before the first spin or after the names change. */
   pick: number | null;
+  /** How long a spin takes before it shows the name, from WHEEL_SPIN_SECONDS. */
+  seconds: number;
 };
 
 export type RoomTimer = {
@@ -130,6 +132,12 @@ export type RoomTimer = {
 };
 
 export const WHEEL_COUNT = 3;
+export const WHEEL_SPIN_SECONDS = [1, 2, 4, 8] as const;
+export const DEFAULT_WHEEL_SECONDS = 4;
+
+function wheelSeconds(value: unknown, fallback: number = DEFAULT_WHEEL_SECONDS) {
+  return WHEEL_SPIN_SECONDS.find((option) => option === value) ?? fallback;
+}
 /** What anyone managing may ask the countdown to do; "done" is the host's clock alone. */
 const TIMER_ACTIONS = ["set", "start", "pause", "reset", "off"] as const;
 export const MAX_WHEEL_NAMES = 40;
@@ -141,7 +149,7 @@ export const TIMER_PRESETS = [60, 180, 300, 600] as const;
 
 export function emptyWheels(): Wheel[] {
   return Array.from({ length: WHEEL_COUNT }, (_, index) => ({
-    on: false, title: `กงล้อ ${index + 1}`, names: [], spin: 0, pick: null,
+    on: false, title: `กงล้อ ${index + 1}`, names: [], spin: 0, pick: null, seconds: DEFAULT_WHEEL_SECONDS,
   }));
 }
 
@@ -323,7 +331,7 @@ export type RoomIntent =
   | { kind: "tournamentTheme"; theme: string }
   | { kind: "tournamentFlash" }
   /** Turn one wheel on or off, rename it, or give it new names. */
-  | { kind: "wheel"; index: number; on?: boolean; title?: string; names?: string[] }
+  | { kind: "wheel"; index: number; on?: boolean; title?: string; names?: string[]; seconds?: number }
   /** The host's reducer picks where it lands, so every screen shows the same name. */
   | { kind: "wheelSpin"; index: number }
   /**
@@ -545,6 +553,7 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       const wheel: Wheel = {
         ...current,
         on: intent.on ?? current.on,
+        seconds: wheelSeconds(intent.seconds, current.seconds),
         title: intent.title === undefined ? current.title : text(intent.title, MAX_WHEEL_TITLE) || `กงล้อ ${intent.index + 1}`,
         names,
         // The old pick points at a name that may have moved or gone.
@@ -990,6 +999,7 @@ function sanitizeWheels(value: unknown): Wheel[] {
       names,
       spin: typeof raw.spin === "number" && Number.isFinite(raw.spin) ? Math.max(0, Math.round(raw.spin)) : 0,
       pick,
+      seconds: wheelSeconds(raw.seconds),
     };
   });
 }
@@ -1216,6 +1226,7 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
         on: typeof value.on === "boolean" ? value.on : undefined,
         title: typeof value.title === "string" ? value.title.slice(0, MAX_WHEEL_TITLE * 2) : undefined,
         names: value.names === undefined ? undefined : wheelNames(value.names),
+        seconds: typeof value.seconds === "number" ? value.seconds : undefined,
       };
     }
     case "timer": {
