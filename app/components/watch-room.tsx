@@ -12,6 +12,7 @@ import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EqControl, KeyControl, MemberList, NotesPanel, VocalCutSelect } from "./room-panels";
 import type { RoomModel } from "./room-model";
+import { RoomToolsCard } from "./room-tools";
 import { Art } from "./ui";
 import { VoiceRoomCard } from "./voice-room";
 
@@ -156,6 +157,8 @@ export function WatchRoom({
           emptyText="ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย"
         />
       </section>
+
+      {state.mode === "watch" && <RoomToolsCard state={state} canManage={canManage} members={members} dispatch={dispatch} />}
     </div>
   );
 }

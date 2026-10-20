@@ -105,7 +105,61 @@ export type RoomState = {
    * soundbar — and only the other screens can move to meet them, so this travels with the room.
    */
   hostOffset: number;
+  /** Name wheels for watch together. Always WHEEL_COUNT of them; the host turns each one on or off. */
+  wheels: Wheel[];
+  /** A countdown the whole room sees. The host's clock runs it; the state carries only the seconds left. */
+  timer: RoomTimer | null;
 };
+
+export type Wheel = {
+  on: boolean;
+  title: string;
+  names: string[];
+  /** Goes up by one on every spin, so each screen can tell a new spin from one it has already shown. */
+  spin: number;
+  /** Where the last spin landed, as an index into names; null before the first spin or after the names change. */
+  pick: number | null;
+};
+
+export type RoomTimer = {
+  /** What it was set to, for starting over. */
+  total: number;
+  /** Seconds to go, as of when the host sent this state. */
+  left: number;
+  running: boolean;
+};
+
+export const WHEEL_COUNT = 3;
+/** What anyone managing may ask the countdown to do; "done" is the host's clock alone. */
+const TIMER_ACTIONS = ["set", "start", "pause", "reset", "off"] as const;
+export const MAX_WHEEL_NAMES = 40;
+export const MAX_WHEEL_NAME = 24;
+export const MAX_WHEEL_TITLE = 24;
+/** Ninety-nine minutes and fifty-nine seconds: what fits on the clock. */
+export const MAX_TIMER_SECONDS = 99 * 60 + 59;
+export const TIMER_PRESETS = [60, 180, 300, 600] as const;
+
+export function emptyWheels(): Wheel[] {
+  return Array.from({ length: WHEEL_COUNT }, (_, index) => ({
+    on: false, title: `กงล้อ ${index + 1}`, names: [], spin: 0, pick: null,
+  }));
+}
+
+/** One name per line or comma, trimmed, without blanks or repeats. */
+export function wheelNames(value: unknown): string[] {
+  const raw = typeof value === "string" ? value.split(/[\n,]/) : Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  return raw.flatMap((name) => {
+    const clean = text(name, MAX_WHEEL_NAME);
+    if (!clean || seen.has(clean)) return [];
+    seen.add(clean);
+    return [clean];
+  }).slice(0, MAX_WHEEL_NAMES);
+}
+
+function timerSeconds(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(MAX_TIMER_SECONDS, Math.round(value))) : 0;
+}
 
 /** How far any one screen may sit from the room, in seconds. */
 export const MAX_OFFSET = 5;
@@ -267,12 +321,22 @@ export type RoomIntent =
   /** A player choosing their own slot in the bracket, from their own phone. */
   | { kind: "tournamentPick"; slot: number; name?: string }
   | { kind: "tournamentTheme"; theme: string }
-  | { kind: "tournamentFlash" };
+  | { kind: "tournamentFlash" }
+  /** Turn one wheel on or off, rename it, or give it new names. */
+  | { kind: "wheel"; index: number; on?: boolean; title?: string; names?: string[] }
+  /** The host's reducer picks where it lands, so every screen shows the same name. */
+  | { kind: "wheelSpin"; index: number }
+  /**
+   * The room's countdown. A guest sends only the action; the host adds the seconds left by its own clock.
+   * done: the host's clock ran out.
+   */
+  | { kind: "timer"; action: "set" | "start" | "pause" | "reset" | "off" | "done"; seconds?: number; left?: number };
 
 /** What a co-host may do on top of what everyone can: run the queue and the room's settings. */
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "playLock", "notesOn", "notesShared",
   "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "tournamentTheme", "vocalCut", "vocalAi", "eq", "voiceRoom", "kick", "unban",
+  "wheel", "wheelSpin", "timer",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -281,7 +345,7 @@ export type GuestIntent = Extract<
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat" | "playLock"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
     | "bomb" | "standingsReset" | "tournament" | "tournamentPick" | "tournamentTheme" | "vocalCut" | "vocalAi" | "eq"
-    | "voiceRoom" | "kick" | "unban" }
+    | "voiceRoom" | "kick" | "unban" | "wheel" | "wheelSpin" | "timer" }
 >;
 
 export type RoomEvent =
@@ -362,8 +426,30 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
     vocalCut: 0, vocalAi: true, eq: { ...FLAT_EQ }, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, playLock: false, keyControl: "everyone",
     voiceRoom: "", cohosts: [], banned: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
-    standings: [], tournament: null, hostOffset: 0,
+    standings: [], tournament: null, hostOffset: 0, wheels: emptyWheels(), timer: null,
   };
+}
+
+function reduceTimer(timer: RoomTimer | null, intent: Extract<RoomIntent, { kind: "timer" }>): RoomTimer | null {
+  const left = intent.left === undefined ? timer?.left ?? 0 : timerSeconds(intent.left);
+  switch (intent.action) {
+    case "set": {
+      const total = timerSeconds(intent.seconds);
+      return total > 0 ? { total, left: total, running: false } : timer;
+    }
+    case "start":
+      if (!timer) return null;
+      // Starting a clock that already ran out starts it over.
+      return left > 0 ? { ...timer, left, running: true } : { ...timer, left: timer.total, running: true };
+    case "pause":
+      return timer ? { ...timer, left, running: false } : null;
+    case "reset":
+      return timer ? { ...timer, left: timer.total, running: false } : null;
+    case "done":
+      return timer ? { ...timer, left: 0, running: false } : null;
+    case "off":
+      return null;
+  }
 }
 
 export function hasContent(state: RoomState) {
@@ -451,6 +537,29 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     }
     case "playLock":
       return intent.enabled === state.playLock ? state : { ...state, playLock: intent.enabled };
+    case "wheel": {
+      const current = state.wheels[intent.index];
+      if (!current) return state;
+      const names = intent.names === undefined ? current.names : wheelNames(intent.names);
+      const changed = names.length !== current.names.length || names.some((name, at) => name !== current.names[at]);
+      const wheel: Wheel = {
+        ...current,
+        on: intent.on ?? current.on,
+        title: intent.title === undefined ? current.title : text(intent.title, MAX_WHEEL_TITLE) || `กงล้อ ${intent.index + 1}`,
+        names,
+        // The old pick points at a name that may have moved or gone.
+        pick: changed ? null : current.pick,
+      };
+      return { ...state, wheels: state.wheels.map((item, at) => (at === intent.index ? wheel : item)) };
+    }
+    case "wheelSpin": {
+      const current = state.wheels[intent.index];
+      if (!current?.on || current.names.length < 2) return state;
+      const wheel: Wheel = { ...current, spin: current.spin + 1, pick: Math.floor(Math.random() * current.names.length) };
+      return { ...state, wheels: state.wheels.map((item, at) => (at === intent.index ? wheel : item)) };
+    }
+    case "timer":
+      return { ...state, timer: reduceTimer(state.timer, intent) };
     case "chat":
       return intent.enabled === state.chat ? state : { ...state, chat: intent.enabled };
     case "keyControl":
@@ -863,7 +972,33 @@ export function sanitizeState(value: unknown): RoomState | null {
     standings: Array.isArray(value.standings) ? sanitizeStandings(value.standings) : [],
     tournament: sanitizeTournament(value.tournament),
     hostOffset: clampOffset(value.hostOffset),
+    wheels: sanitizeWheels(value.wheels),
+    timer: sanitizeTimer(value.timer),
   };
+}
+
+function sanitizeWheels(value: unknown): Wheel[] {
+  const list = Array.isArray(value) ? value : [];
+  return emptyWheels().map((empty, index) => {
+    const raw = list[index];
+    if (!isRecord(raw)) return empty;
+    const names = wheelNames(raw.names);
+    const pick = typeof raw.pick === "number" && Number.isInteger(raw.pick) && raw.pick >= 0 && raw.pick < names.length ? raw.pick : null;
+    return {
+      on: raw.on === true,
+      title: text(raw.title, MAX_WHEEL_TITLE) || empty.title,
+      names,
+      spin: typeof raw.spin === "number" && Number.isFinite(raw.spin) ? Math.max(0, Math.round(raw.spin)) : 0,
+      pick,
+    };
+  });
+}
+
+function sanitizeTimer(value: unknown): RoomTimer | null {
+  if (!isRecord(value)) return null;
+  const total = timerSeconds(value.total);
+  if (total <= 0) return null;
+  return { total, left: Math.min(total, timerSeconds(value.left)), running: value.running === true };
 }
 
 function memberIds(value: unknown[]) {
@@ -1070,6 +1205,25 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
     }
     case "tournamentTheme":
       return typeof value.theme === "string" ? { kind: "tournamentTheme", theme: value.theme } : null;
+    case "wheel":
+    case "wheelSpin": {
+      const index = typeof value.index === "number" && Number.isInteger(value.index) ? value.index : -1;
+      if (index < 0 || index >= WHEEL_COUNT) return null;
+      if (value.kind === "wheelSpin") return { kind: "wheelSpin", index };
+      return {
+        kind: "wheel",
+        index,
+        on: typeof value.on === "boolean" ? value.on : undefined,
+        title: typeof value.title === "string" ? value.title.slice(0, MAX_WHEEL_TITLE * 2) : undefined,
+        names: value.names === undefined ? undefined : wheelNames(value.names),
+      };
+    }
+    case "timer": {
+      // The seconds left come from the host's own clock, never from the sender.
+      const action = TIMER_ACTIONS.find((option) => option === value.action);
+      if (!action) return null;
+      return action === "set" ? { kind: "timer", action, seconds: timerSeconds(value.seconds) } : { kind: "timer", action };
+    }
     default:
       return null;
   }

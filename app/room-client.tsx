@@ -107,6 +107,8 @@ export default function RoomClient({
   /** Host clock: when the mic bomb runs out. The state carries only the seconds left, so every screen agrees. */
   const spotlightUntilRef = useRef(0);
   const lastBombRef = useRef<string | null>(null);
+  /** Host clock: when the room's countdown reaches zero, while it runs. */
+  const timerEndsRef = useRef(0);
   /** Set once the pickers below exist; dispatch is defined before them. */
   const startBombRef = useRef<() => void>(() => undefined);
   const playerNamesRef = useRef<() => string[]>(() => []);
@@ -135,10 +137,13 @@ export default function RoomClient({
     const spotlight = current.spotlight
       ? { ...current.spotlight, seconds: Math.max(0, Math.ceil((spotlightUntilRef.current - Date.now()) / 1000)) }
       : null;
+    const timer = current.timer?.running
+      ? { ...current.timer, left: Math.max(0, Math.ceil((timerEndsRef.current - Date.now()) / 1000)) }
+      : current.timer;
     broadcastRef.current({
       kind: "state",
       state: {
-        ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current, spotlight,
+        ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current, spotlight, timer,
         hostOffset: hostOffsetRef.current,
       },
     });
@@ -176,12 +181,21 @@ export default function RoomClient({
     return next;
   }, [pushToast, replaceState, scheduleBroadcast]);
 
+  /** The countdown runs on the host's clock: every change carries the seconds left by it, never by the sender's. */
+  const runTimer = useCallback((intent: Extract<RoomIntent, { kind: "timer" }>) => {
+    const timer = stateRef.current.timer;
+    const left = timer?.running ? Math.max(0, Math.ceil((timerEndsRef.current - Date.now()) / 1000)) : timer?.left;
+    const next = commit({ ...intent, left });
+    if (next.timer?.running) timerEndsRef.current = Date.now() + next.timer.left * 1000;
+  }, [commit]);
+
   const dispatch = useCallback((intent: RoomIntent) => {
     if (isHostRef.current || !realtimeConfigured) {
       // The room, not the sender, decides who the mic lands on and whose vote this is.
       if (intent.kind === "tournamentPick") commit({ ...intent, name: selfNameRef.current });
       else if (intent.kind === "kick") commit({ ...intent, by: isHostRef.current ? "host" : "cohost" });
       else if (intent.kind === "bomb") startBombRef.current();
+      else if (intent.kind === "timer") runTimer(intent);
       else if (intent.kind === "tournament" && intent.action === "start") {
         commit({ ...intent, players: playerNamesRef.current() });
       } else if (intent.kind === "vote" || intent.kind === "score") commit({ ...intent, memberId: selfIdRef.current ?? "host" });
@@ -197,7 +211,7 @@ export default function RoomClient({
     if (guestIntent) {
       broadcastRef.current({ kind: "intent", intent: guestIntent, from: selfNameRef.current, fromId: selfIdRef.current ?? undefined });
     }
-  }, [commit, pushToast, realtimeConfigured]);
+  }, [commit, pushToast, realtimeConfigured, runTimer]);
 
   const pushMessage = useCallback((text: string, from: string) => {
     messageIdRef.current += 1;
@@ -395,6 +409,10 @@ export default function RoomClient({
           commit({ kind: "kick", memberId: intent.memberId, by: "cohost" });
           return;
         }
+        if (intent.kind === "timer") {
+          runTimer(intent);
+          return;
+        }
         if (intent.kind === "tournament" && intent.action === "start") {
           // The shape of the knock-out is the sender's to choose; who is in it is not.
           commit({ ...intent, players: playerNames() });
@@ -473,13 +491,15 @@ export default function RoomClient({
         const recovered = sanitizeState(event.state);
         if (!recovered || !hasContent(recovered)) return;
         // The host keeps the mode from its own link. The reloaded video starts in its original key, like Transpose.
-        replaceState({ ...recovered, mode: stateRef.current.mode, key: 0 });
+        // The countdown's clock went with the old page, so it comes back paused where the room last saw it.
+        const timer = recovered.timer && { ...recovered.timer, running: false };
+        replaceState({ ...recovered, mode: stateRef.current.mode, key: 0, timer });
         if (recovered.nowPlaying) setResume({ itemId: recovered.nowPlaying.id, position: recovered.position, at: Date.now() });
         broadcastStateNow();
         return;
       }
     }
-  }, [broadcastStateNow, commit, confirmPendingAdds, dressItem, playerNames, pushBurst, pushMessage, pushToast, replaceState, startBomb]);
+  }, [broadcastStateNow, commit, confirmPendingAdds, dressItem, playerNames, pushBurst, pushMessage, pushToast, replaceState, runTimer, startBomb]);
 
   const handleResync = useCallback(({ isHost: selfIsHost }: RoomSelf) => {
     if (!selfIsHost) broadcastRef.current({ kind: "state:request" });
@@ -592,6 +612,21 @@ export default function RoomClient({
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [commit, isHost, pushToast, scheduleBroadcast, state.spotlight]);
+
+  // The room's countdown: a fresh number every second for the other screens, and the end when the host's clock says so.
+  const timerRunning = state.timer?.running === true;
+  useEffect(() => {
+    if (!isHost || !timerRunning) return;
+    const intervalId = window.setInterval(() => {
+      if (Date.now() < timerEndsRef.current) {
+        scheduleBroadcast(BROADCAST_DELAY_MS);
+        return;
+      }
+      commit({ kind: "timer", action: "done" });
+      pushToast("หมดเวลาแล้ว!");
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [commit, isHost, pushToast, scheduleBroadcast, timerRunning]);
 
   // The tournament's announcement is a moment, not a screen to live on.
   useEffect(() => {

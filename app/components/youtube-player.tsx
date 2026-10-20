@@ -19,6 +19,8 @@ const FADE_STEP_MS = 100;
 const NEAR_END_CHECK_MS = 500;
 /** Nudging the offset moves the video once the person stops, not on every step of the slider. */
 const OFFSET_SETTLE_MS = 220;
+/** A guest's video stopped or started by something outside the room waits this long before being put back. */
+const REALIGN_MS = 400;
 
 type Deck = { player: Player | null; ready: boolean; itemId: string | null };
 type Fade = { timer: number | undefined; finish: (() => void) | null };
@@ -36,6 +38,13 @@ function expectedPosition(follow: PlaybackFollow, playing: boolean) {
 function isRunning(player: Player) {
   const state = player.getPlayerState();
   return state === PlayerState.PLAYING || state === PlayerState.BUFFERING;
+}
+
+/** Puts a guest's player back to the room's play or pause, without fighting a browser that blocked autoplay. */
+function realign(player: Player, playing: boolean, started: boolean) {
+  const state = player.getPlayerState();
+  if (!playing && isRunning(player)) player.pauseVideo();
+  else if (playing && started && state === PlayerState.PAUSED) player.playVideo();
 }
 
 function endFade(fade: Fade) {
@@ -179,6 +188,8 @@ export function YouTubePlayer({
   const [failed, setFailed] = useState(false);
   /** Sticky: once built, the second deck stays, so turning crossfade off never interrupts the song playing on it. */
   const [twoDecks, setTwoDecks] = useState(false);
+  /** The item in front has really played here, so a pause now came from outside the room, not from blocked autoplay. */
+  const startedRef = useRef(false);
   const sendsKey = semitones !== undefined;
 
   useEffect(() => {
@@ -200,10 +211,22 @@ export function YouTubePlayer({
       onStateChange: (index, state) => {
         // The deck fading out keeps sending events; only the one in front speaks for the room.
         if (index !== activeRef.current) return;
-        if (state === PlayerState.PLAYING) setBlocked(false);
+        if (state === PlayerState.PLAYING) {
+          setBlocked(false);
+          startedRef.current = true;
+        }
         if (state === PlayerState.ENDED) latest.current.onEnded?.();
         if (state === PlayerState.PLAYING || state === PlayerState.PAUSED) {
           latest.current.onPlayingChange?.(state === PlayerState.PLAYING);
+        }
+        // A guest only mirrors the room. Headphone buttons, the lock screen or a phone putting the tab to sleep can still
+        // pause or start this one video, so put it back the way the room has it.
+        if (!controls && (state === PlayerState.PLAYING || state === PlayerState.PAUSED)) {
+          window.setTimeout(() => {
+            const player = decks[index].player;
+            if (!player || index !== activeRef.current) return;
+            realign(player, latest.current.playing, startedRef.current);
+          }, REALIGN_MS);
         }
       },
       onError: (index, code) => {
@@ -250,6 +273,7 @@ export function YouTubePlayer({
     const canFade = crossfade > 0 && wantPlaying && current.itemId !== null && other.ready && other.player && isRunning(outgoing);
 
     endFade(fadeRef.current);
+    startedRef.current = false;
     if (!canFade || !other.player) {
       current.itemId = item.id;
       if (wantPlaying) outgoing.loadVideoById(video);
@@ -345,7 +369,9 @@ export function YouTubePlayer({
       return () => window.clearTimeout(timeoutId);
     }
     if (Math.abs(player.getCurrentTime() - target()) > FOLLOW_TOLERANCE_S) player.seekTo(target(), true);
-  }, [active, follow, item.id, offset, playing, readyCount]);
+    // Every snapshot from the host is also a chance to catch a video that drifted out of play or pause.
+    if (!controls) realign(player, playing, startedRef.current);
+  }, [active, controls, follow, item.id, offset, playing, readyCount]);
 
   // Host: start the next song while this one is still ending.
   useEffect(() => {

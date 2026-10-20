@@ -1179,6 +1179,52 @@ select.field { padding-right: 8px; }
   to { opacity: 1; scale: 1; }
 }
 
+/* ---------- Watch together: name wheels and the countdown ---------- */
+
+.tools-card { display: flex; flex-direction: column; gap: 14px; padding: 18px; order: 5; }
+@media (min-width: 1024px) { .watch-grid > .tools-card { order: 5; grid-column: 1 / -1; } }
+.wheel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.wheel-panel {
+  display: grid; justify-items: center; gap: 10px; padding: 14px;
+  border: 2px solid var(--bark); border-radius: 20px; background: var(--cream);
+}
+.wheel-title { color: var(--bark); font-size: 17px; font-weight: 800; }
+.wheel-stage { position: relative; width: min(100%, 260px); aspect-ratio: 1; }
+.wheel-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.wheel-disc { transform-origin: 0 0; }
+.wheel-disc.is-spinning { transition: transform 4.2s cubic-bezier(0.12, 0.7, 0.12, 1); }
+.wheel-empty { fill: var(--white); stroke: var(--line); stroke-width: 3; stroke-dasharray: 8 6; }
+.wheel-label { fill: var(--bark); font-weight: 700; pointer-events: none; }
+.wheel-hub { fill: var(--bark); }
+.wheel-pointer {
+  position: absolute; top: -6px; left: 50%; z-index: 1; translate: -50% 0;
+  width: 0; height: 0; border-inline: 12px solid transparent; border-top: 22px solid var(--terra-deep);
+  filter: drop-shadow(0 2px 0 var(--bark));
+}
+.wheel-result { min-height: 28px; color: var(--clay); font-size: 15px; text-align: center; }
+.wheel-result b { color: var(--bark); font-size: 20px; font-weight: 800; }
+.wheel-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.wheel-editor { display: grid; gap: 6px; width: 100%; }
+.wheel-names { height: 140px; font-size: 15px; line-height: 1.6; }
+
+.timer-panel {
+  display: grid; justify-items: center; gap: 12px; padding: 16px;
+  border: 2px solid var(--bark); border-radius: 20px; background: var(--honey);
+}
+.timer-panel.is-running { background: var(--white); }
+.timer-panel.is-done { background: var(--sand); animation: timer-ring 0.5s ease-in-out 3; }
+.timer-face { display: grid; justify-items: center; gap: 2px; color: var(--bark); }
+.timer-face small { color: var(--clay); font-size: 14px; font-weight: 600; }
+.timer-clock { font-size: clamp(44px, 9vw, 72px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.timer-panel.is-done .timer-clock { color: var(--terra-deep); }
+.timer-custom { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; color: var(--clay); font-size: 14px; font-weight: 600; }
+.timer-custom .field { width: 72px; min-height: 40px; padding: 0 8px; }
+@keyframes timer-ring {
+  0%, 100% { rotate: 0deg; }
+  25% { rotate: -1.5deg; }
+  75% { rotate: 1.5deg; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
