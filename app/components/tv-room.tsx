@@ -6,7 +6,7 @@ import { formatKey, peekNext, singerOf } from "../../lib/room-state";
 import type { HelperAi, HelperStatus } from "../../lib/karaoke-key";
 import { ChatFlights, type ChatMessage } from "./chat";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
-import { DraftPicker, PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
+import { BallotCard, DraftPicker, PartyButton, ScoreBoard, ScoreTable, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
 import { EmojiPad, EmojiRain, type EmojiBurst } from "./reactions";
 import { EqControl, KeyControl, MemberList, RoomQr, VocalCutSelect } from "./room-panels";
@@ -149,6 +149,7 @@ export function TvRoom({
         </section>
 
         <DraftPicker state={state} selfName={selfName} dispatch={dispatch} />
+        <BallotCard state={state} selfId={model.selfId} dispatch={dispatch} place="stage" />
 
         {state.tournament && (
           <section className="card side-board" aria-label="ทัวร์นาเมนต์">
@@ -173,7 +174,7 @@ export function TvRoom({
             selfName={selfName}
             selfId={selfId}
             isHost={canManage}
-            voting={state.queueOrder === "vote"}
+            voting={state.queueOrder === "vote" && state.voteSeconds === 0}
             dispatch={dispatch}
             limit={UP_NEXT_LIMIT}
             emptyText="ยังไม่มีเพลงต่อคิว"

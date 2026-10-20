@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyHelperStatus } from "../lib/karaoke-key";
 import { type RoomMember, type RoomSelf, useRoomRealtime } from "../lib/room-realtime";
 import {
-  clampOffset, createRoomState, hasContent, hasOwnScreens, isBanned, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, queuedBy, reduceRoom, sanitizeChat,
-  sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS, TOURNAMENT_FLASH_MS,
+  clampOffset, createRoomState, hasContent, hasOwnScreens, isBanned, isKaraoke, isManager, MANAGER_INTENTS, mayChangeKey, mayQueue, queuedBy, reduceRoom, sanitizeChat,
+  sanitizeGuestIntent, sanitizeReaction, sanitizeState, SCORE_SHOW_MS, timedVote, TOURNAMENT_FLASH_MS, BALLOT_SIZE,
   type QueueItem, type RoomEvent, type RoomIntent, type RoomMode, type RoomState,
 } from "../lib/room-state";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -36,6 +36,7 @@ const TOAST_MS = 4000;
 const MAX_BURSTS = 8;
 const CHAT_COOLDOWN_MS = 1500;
 const SKIP_AFTER_ERROR_MS = 2500;
+const QUEUE_CLOSED_TEXT = "ตอนนี้หัวห้องปิดการเข้าคิวไว้ ให้หัวห้องเป็นคนเพิ่มเพลง";
 
 type DialogKind = "invite" | "name" | "notes" | "karaoke" | "party" | "modes";
 
@@ -109,6 +110,8 @@ export default function RoomClient({
   const lastBombRef = useRef<string | null>(null);
   /** Host clock: when the room's countdown reaches zero, while it runs. */
   const timerEndsRef = useRef(0);
+  /** Host clock: when the timed vote for the next song closes. */
+  const ballotEndsRef = useRef(0);
   /** Set once the pickers below exist; dispatch is defined before them. */
   const startBombRef = useRef<() => void>(() => undefined);
   const playerNamesRef = useRef<() => string[]>(() => []);
@@ -140,10 +143,13 @@ export default function RoomClient({
     const timer = current.timer?.running
       ? { ...current.timer, left: Math.max(0, Math.ceil((timerEndsRef.current - Date.now()) / 1000)) }
       : current.timer;
+    const ballot = current.ballot && !current.ballot.winner
+      ? { ...current.ballot, left: Math.max(0, Math.ceil((ballotEndsRef.current - Date.now()) / 1000)) }
+      : current.ballot;
     broadcastRef.current({
       kind: "state",
       state: {
-        ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current, spotlight, timer,
+        ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current, spotlight, timer, ballot,
         hostOffset: hostOffsetRef.current,
       },
     });
@@ -300,6 +306,7 @@ export default function RoomClient({
 
   /** A playlist link: every song it holds, in its own order, one after another. */
   const addPlaylist = useCallback(async (list: string): Promise<AddVideoResult> => {
+    if (!isHostRef.current && realtimeConfigured && !mayQueue(stateRef.current, selfIdRef.current)) return { ok: false, message: QUEUE_CLOSED_TEXT };
     const lookup = await lookupPlaylist(list);
     if (!lookup.ok) {
       const why = {
@@ -328,7 +335,7 @@ export default function RoomClient({
     }
     if (added === 0) return { ok: false, message: "เพลงในเพลย์ลิสต์นี้อยู่ในคิวหมดแล้ว" };
     return { ok: true, message: `เพิ่มจากเพลย์ลิสต์ ${added} เพลง` };
-  }, [queueItem]);
+  }, [queueItem, realtimeConfigured]);
 
   const addVideo = useCallback(async (input: string): Promise<AddVideoResult> => {
     const videoId = parseYouTubeId(input);
@@ -336,6 +343,8 @@ export default function RoomClient({
     // A link with both a video and a list is a song being shared from a playlist: the song is what was meant.
     if (list && !videoId) return addPlaylist(list);
     if (!videoId) return { ok: false, message: "ไม่พบลิงก์ YouTube ในข้อความนี้" };
+    // The host would turn it away anyway; saying so here saves the wait.
+    if (!isHostRef.current && realtimeConfigured && !mayQueue(stateRef.current, selfIdRef.current)) return { ok: false, message: QUEUE_CLOSED_TEXT };
     const lookup = await lookupVideo(videoId);
     if (!lookup.playable) {
       return {
@@ -429,6 +438,10 @@ export default function RoomClient({
           return;
         }
         if (intent.kind === "add") {
+          if (!mayQueue(state, fromId)) {
+            if (fromId) broadcastRef.current({ kind: "notice", to: fromId, text: QUEUE_CLOSED_TEXT });
+            return;
+          }
           const waiting = queuedBy(state, fromId);
           if (!manager && state.queueLimit > 0 && waiting >= state.queueLimit && fromId) {
             broadcastRef.current({
@@ -493,6 +506,8 @@ export default function RoomClient({
         // The host keeps the mode from its own link. The reloaded video starts in its original key, like Transpose.
         // The countdown's clock went with the old page, so it comes back paused where the room last saw it.
         const timer = recovered.timer && { ...recovered.timer, running: false };
+        // A vote still open picks up its clock from the seconds the room last saw.
+        if (recovered.ballot && !recovered.ballot.winner) ballotEndsRef.current = Date.now() + recovered.ballot.left * 1000;
         replaceState({ ...recovered, mode: stateRef.current.mode, key: 0, timer });
         if (recovered.nowPlaying) setResume({ itemId: recovered.nowPlaying.id, position: recovered.position, at: Date.now() });
         broadcastStateNow();
@@ -627,6 +642,36 @@ export default function RoomClient({
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [commit, isHost, pushToast, scheduleBroadcast, timerRunning]);
+
+  // Timed vote: while a song plays, draw two from the queue for the room to choose the next one from.
+  const ballotNeeded = isHost && timedVote(state) && state.nowPlaying !== null && !state.ballot && state.queue.length >= BALLOT_SIZE;
+  useEffect(() => {
+    if (!ballotNeeded) return;
+    const timeoutId = window.setTimeout(() => {
+      const current = stateRef.current;
+      const pool = [...current.queue];
+      const ids: string[] = [];
+      while (ids.length < BALLOT_SIZE && pool.length > 0) ids.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id);
+      ballotEndsRef.current = Date.now() + current.voteSeconds * 1000;
+      commit({ kind: "ballotOpen", ids, seconds: current.voteSeconds });
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [ballotNeeded, commit]);
+
+  const ballotOpen = isHost && state.ballot !== null && !state.ballot.winner;
+  useEffect(() => {
+    if (!ballotOpen) return;
+    const intervalId = window.setInterval(() => {
+      if (Date.now() < ballotEndsRef.current) {
+        scheduleBroadcast(BROADCAST_DELAY_MS);
+        return;
+      }
+      const next = commit({ kind: "ballotClose" });
+      const winner = next.queue.find((item) => item.id === next.ballot?.winner);
+      if (winner) pushToast(`โหวตจบแล้ว “${winner.title}” ได้เล่นต่อไป`);
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [ballotOpen, commit, pushToast, scheduleBroadcast]);
 
   // The tournament's announcement is a moment, not a screen to live on.
   useEffect(() => {
@@ -765,9 +810,10 @@ export default function RoomClient({
   const inviteUrl = `${appOrigin}/?room=${roomCode}&mode=${state.mode}`;
   const canManage = isHost || isManager(state, selfId) || !realtimeConfigured;
   const canPlay = canManage || !state.playLock;
+  const canQueue = canManage || mayQueue(state, selfId);
   const canSkip = isHost || !realtimeConfigured || state.mode !== "watch";
   const model: RoomModel = {
-    state, isHost, canManage, canPlay, canSkip, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
+    state, isHost, canManage, canPlay, canQueue, canSkip, selfId, selfName, members, status, hostOnline, roomCode, inviteUrl, dispatch, addVideo,
   };
   const tvScreen = isHost && !hasOwnScreens(state.mode);
   const waiting = !isHost && realtimeConfigured && !synced;

@@ -54,13 +54,26 @@ export function RoomToolsCard({ state, canManage, members, dispatch }: {
   dispatch: (intent: RoomIntent) => void;
 }) {
   const shown = state.wheels.flatMap((wheel, index) => (wheel.on ? [{ wheel, index }] : []));
-  if (!canManage && shown.length === 0 && !state.timer) return null;
+  if (!canManage && shown.length === 0 && !state.timer && !state.gamesView) return null;
 
   return (
     <section className="card tools-card" aria-labelledby="tools-title">
       <div className="card-head">
-        <h2 id="tools-title"><FerrisWheel size={22} aria-hidden="true" /> กงล้อและจับเวลา</h2>
+        <h2 id="tools-title"><FerrisWheel size={22} aria-hidden="true" /> {state.gamesView ? "มินิเกม" : "กงล้อและจับเวลา"}</h2>
+        {canManage && (
+          <button
+            type="button"
+            className={`chip-btn${state.gamesView ? " is-on" : ""}`}
+            aria-pressed={state.gamesView}
+            onClick={() => dispatch({ kind: "gamesView", enabled: !state.gamesView })}
+          >
+            {state.gamesView ? "กลับไปดูวิดีโอ" : "เปิดโหมดมินิเกม"}
+          </button>
+        )}
       </div>
+      {!canManage && state.gamesView && shown.length === 0 && !state.timer && (
+        <p className="empty-note">หัวห้องกำลังเตรียมมินิเกม รอสักครู่…</p>
+      )}
       {canManage && (
         <div className="party-chips" role="group" aria-label="เปิดหรือปิดกงล้อ">
           {state.wheels.map((wheel, index) => (

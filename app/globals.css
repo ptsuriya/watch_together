@@ -1169,6 +1169,33 @@ select.field { padding-right: 8px; }
   font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .vote-btn.is-on { background: var(--gold); }
+
+/* Timed vote: two songs drawn from the queue, one tap each. */
+.ballot { display: grid; gap: 10px; padding: 16px; }
+.ballot-head { display: flex; align-items: center; gap: 8px; color: var(--bark); }
+.ballot-head strong { flex: 1; font-size: 16px; font-weight: 800; }
+.ballot-head small { color: var(--clay); font-size: 13px; }
+.ballot-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ballot-option {
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; overflow: hidden;
+  border: 2px solid var(--bark); border-radius: 16px; background: var(--cream); color: var(--bark);
+  box-shadow: var(--shadow-sm); text-align: left; cursor: pointer;
+}
+.ballot-option:disabled { cursor: default; }
+.ballot-option.is-mine { background: var(--honey); box-shadow: 0 0 0 3px var(--gold), var(--shadow-sm); }
+.ballot-option.is-winner { background: var(--gold); }
+.ballot-option.is-out { opacity: 0.55; }
+.ballot-copy { position: relative; z-index: 1; display: grid; flex: 1; min-width: 0; }
+.ballot-copy strong { overflow: hidden; font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.ballot-copy small { color: var(--clay); font-size: 13px; }
+.ballot-option .thumb { position: relative; z-index: 1; flex: none; width: 72px; height: auto; border-radius: 10px; }
+.ballot-count {
+  position: relative; z-index: 1; display: grid; place-items: center; min-width: 34px; height: 34px; padding: 0 8px;
+  border: 2px solid var(--bark); border-radius: 999px; background: var(--white); font-weight: 800;
+}
+.ballot-bar { position: absolute; inset: auto auto 0 0; height: 5px; background: var(--amber); transition: width 0.3s ease; }
+.ballot-hint { color: var(--clay); font-size: 13px; }
+.ballot-stage .ballot-copy strong { font-size: 17px; }
 .tag-singer { background: var(--sand); }
 
 @keyframes spotlight-pulse {
@@ -1207,6 +1234,15 @@ select.field { padding-right: 8px; }
 .wheel-result b { color: var(--bark); font-size: 20px; font-weight: 800; }
 .wheel-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .wheel-editor { display: grid; gap: 6px; width: 100%; }
+
+/* Mini games: the video and the notes fold away for the room, and the wheels and the timer take the top. */
+.watch-grid.is-games .player-slot { display: none; }
+.watch-grid.is-games > .tools-card { order: -1; grid-column: 1 / -1; }
+.watch-grid.is-games .wheel-stage { width: min(100%, 340px); }
+.watch-grid.is-games .timer-clock { font-size: clamp(56px, 12vw, 104px); }
+@media (min-width: 1024px) {
+  .watch-grid.is-games .player-card { max-width: none; grid-column: 1 / -1; }
+}
 
 /* A spin lifts the wheel out over the video, so the whole room looks at one thing. */
 .wheel-slot { display: grid; }

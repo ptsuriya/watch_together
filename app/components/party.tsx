@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
-  BOMB_SECOND_OPTIONS, draftTurn, isKaraoke, PARTY_GAMES, QUEUE_LIMITS, QUEUE_ORDERS, ROUND_THEMES, scoreAverage,
+  BOMB_SECOND_OPTIONS, draftTurn, isKaraoke, PARTY_GAMES, QUEUE_CLOSED, QUEUE_LIMITS, timedVote, VOTE_SECOND_OPTIONS, QUEUE_ORDERS, ROUND_THEMES, scoreAverage,
   SCORE_MAX, standingsBoard, TOUR_FORMATS, TOUR_SEEDINGS, waitingOn,
   type PartyGame, type QueueItem, type QueueOrder, type RoomIntent, type RoomState, type Spotlight,
   type TourFormat, type TourSeeding,
@@ -18,12 +18,12 @@ import HoldButton from "./bits/hold-button";
 import SquishSwitch from "./bits/squish-switch";
 import { celebrate, originOf } from "./celebrate";
 import PeekRating from "./peek-rating";
-import { Art, Dialog } from "./ui";
+import { Art, Dialog, VideoThumb } from "./ui";
 
 const QUEUE_ORDER_LABELS: Record<QueueOrder, { name: string; hint: string }> = {
   line: { name: "ตามคิว", hint: "เพลงบนสุดได้เล่นก่อน" },
   random: { name: "สุ่มจากคิว", hint: "ห้องสุ่มเพลงต่อไปเอง ไม่มีใครรู้ว่าใครก่อน" },
-  vote: { name: "โหวตคิวต่อไป", hint: "เพลงที่ได้โหวตมากสุดได้ไปต่อ" },
+  vote: { name: "โหวตคิวต่อไป", hint: "ห้องสุ่มสองเพลงจากคิวมาให้โหวต เพลงที่ได้โหวตมากกว่าได้เล่นต่อไป" },
 };
 
 const GAME_LABELS: Record<PartyGame, { name: string; hint: string }> = {
@@ -55,6 +55,7 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
   const { state, canManage, dispatch } = model;
   const limitId = useId();
   const orderId = useId();
+  const voteId = useId();
   const gameId = useId();
   const bombId = useId();
   const karaoke = isKaraoke(state.mode);
@@ -90,10 +91,14 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
             onChange={(event) => dispatch({ kind: "queueLimit", count: Number(event.target.value) })}
           >
             {QUEUE_LIMITS.map((count) => (
-              <option key={count} value={count}>{count === 0 ? "ไม่จำกัด" : `${count} เพลง`}</option>
+              <option key={count} value={count}>{count === 0 ? "ไม่จำกัด" : count === QUEUE_CLOSED ? "เข้าคิวไม่ได้" : `${count} เพลง`}</option>
             ))}
           </select>
-          <small>หัวห้องและหัวห้องร่วมไม่ติดลิมิตนี้</small>
+          <small>
+            {state.queueLimit === QUEUE_CLOSED
+              ? "ลูกห้องเพิ่มเพลงไม่ได้ เฉพาะหัวห้องและหัวห้องร่วมเพิ่มได้"
+              : "หัวห้องและหัวห้องร่วมไม่ติดลิมิตนี้"}
+          </small>
         </div>
 
         <div className="party-row">
@@ -108,8 +113,29 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
               <option key={order} value={order}>{QUEUE_ORDER_LABELS[order].name}</option>
             ))}
           </select>
-          <small>{QUEUE_ORDER_LABELS[state.queueOrder].hint}</small>
+          <small>
+            {state.queueOrder === "vote" && state.voteSeconds === 0
+              ? "ทุกคนโหวตเพลงไหนในคิวก็ได้ เพลงที่ได้โหวตมากสุดได้ไปต่อ"
+              : QUEUE_ORDER_LABELS[state.queueOrder].hint}
+          </small>
         </div>
+
+        {state.queueOrder === "vote" && (
+          <div className="party-row">
+            <label htmlFor={voteId}><Timer size={16} aria-hidden="true" /> เวลาโหวต</label>
+            <select
+              id={voteId}
+              className="field"
+              value={state.voteSeconds}
+              onChange={(event) => dispatch({ kind: "voteSeconds", seconds: Number(event.target.value) })}
+            >
+              {VOTE_SECOND_OPTIONS.map((seconds) => (
+                <option key={seconds} value={seconds}>{seconds === 0 ? "ไม่จับเวลา (โหวตทั้งคิว)" : `${seconds} วินาที`}</option>
+              ))}
+            </select>
+            <small>ระหว่างเพลงที่เล่นอยู่ ห้องสุ่มสองเพลงจากคิวมาให้โหวต หมดเวลาแล้วเพลงที่ชนะจะเล่นต่อไป</small>
+          </div>
+        )}
 
         {karaoke && <div className="party-row">
           <label htmlFor={gameId}><Bomb size={16} aria-hidden="true" /> เกมในห้อง</label>
@@ -248,7 +274,7 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
 
 /** The one way into the room's settings, so nothing else has to sit beside the queue. */
 export function PartyButton({ state, onOpen }: { state: RoomState; onOpen: () => void }) {
-  const playing = state.game !== "off" || state.queueOrder !== "line" || state.scoring || state.queueLimit > 0;
+  const playing = state.game !== "off" || state.queueOrder !== "line" || state.scoring || state.queueLimit !== 0;
   return (
     <button type="button" className={`chip-btn${playing ? " is-on" : ""}`} onClick={onOpen}>
       {playing ? <Bomb size={16} aria-hidden="true" /> : <SlidersHorizontal size={16} aria-hidden="true" />}
@@ -546,6 +572,57 @@ export function DraftPicker({ state, selfName, dispatch }: {
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+/** Timed vote: the two songs drawn from the queue, the clock, and one tap for the one you want next. */
+export function BallotCard({ state, selfId, dispatch, place = "phone" }: {
+  state: RoomState;
+  selfId: string | null;
+  dispatch: (intent: RoomIntent) => void;
+  place?: "stage" | "phone";
+}) {
+  const ballot = state.ballot;
+  if (!timedVote(state) || !ballot) return null;
+  const items = ballot.ids.flatMap((id) => state.queue.find((item) => item.id === id) ?? []);
+  const total = Object.keys(ballot.votes).length;
+  const mine = ballot.votes[selfId ?? "host"];
+  const open = !ballot.winner;
+  return (
+    <section className={`card ballot ballot-${place}`} aria-label="โหวตเพลงต่อไป">
+      <div className="ballot-head">
+        <ThumbsUp size={18} aria-hidden="true" />
+        <strong>{open ? "โหวตเพลงต่อไป" : "ผลโหวต"}</strong>
+        {open ? <Countdown key={ballot.left} seconds={ballot.left} /> : <small>เพลงที่ชนะจะเล่นต่อจากเพลงนี้</small>}
+      </div>
+      <ul className="ballot-options">
+        {items.map((item) => {
+          const votes = Object.values(ballot.votes).filter((vote) => vote === item.id).length;
+          const share = total > 0 ? Math.round((votes / total) * 100) : 0;
+          const won = ballot.winner === item.id;
+          return (
+            <li key={item.id}>
+              <button
+                type="button"
+                className={`ballot-option${mine === item.id ? " is-mine" : ""}${won ? " is-winner" : ""}${!open && !won ? " is-out" : ""}`}
+                disabled={!open}
+                aria-pressed={mine === item.id}
+                onClick={() => dispatch({ kind: "vote", itemId: item.id })}
+              >
+                <VideoThumb videoId={item.videoId} />
+                <span className="ballot-copy">
+                  <strong>{item.title}</strong>
+                  <small>{won ? "ได้เล่นต่อไป" : item.singer ?? item.addedBy}</small>
+                </span>
+                <span className="ballot-count">{votes}</span>
+                <span className="ballot-bar" style={{ width: `${share}%` }} aria-hidden="true" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {open && <small className="ballot-hint">{mine ? "แตะอีกครั้งเพื่อยกเลิก หรือแตะอีกเพลงเพื่อเปลี่ยนใจ" : "แตะเพลงที่อยากฟังต่อ คนละ 1 โหวต"}</small>}
     </section>
   );
 }

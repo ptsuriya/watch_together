@@ -80,7 +80,7 @@ export type RoomState = {
   cohosts: string[];
   /** Member ids that were shown the door. Their own page leaves, and the host stops listening to them. */
   banned: string[];
-  /** How many songs one guest may keep in the queue at a time; 0 lifts the limit. Hosts and co-hosts are free. */
+  /** How many songs one guest may keep in the queue at a time; 0 lifts the limit, QUEUE_CLOSED shuts guests out. Hosts and co-hosts are free. */
   queueLimit: number;
   /** Which song comes next: the top of the queue, a random one, or the one with the most votes. */
   queueOrder: QueueOrder;
@@ -109,7 +109,45 @@ export type RoomState = {
   wheels: Wheel[];
   /** A countdown the whole room sees. The host's clock runs it; the state carries only the seconds left. */
   timer: RoomTimer | null;
+  /**
+   * Vote mode: how long the room has to choose between two songs drawn from the queue. 0 keeps the old way, where
+   * anyone votes for any song in the queue at any time.
+   */
+  voteSeconds: number;
+  /** Vote mode with a time: the two songs up for the next slot, and who wants which. */
+  ballot: Ballot | null;
+  /** Watch together: the host has folded the video and notes away so the room plays the wheels and the timer. */
+  gamesView: boolean;
 };
+
+export type Ballot = {
+  /** The queue item ids drawn for this vote. */
+  ids: string[];
+  /** One vote each: member id → the item id they picked. */
+  votes: Record<string, string>;
+  /** Seconds to go, as of when the host sent this state. */
+  left: number;
+  /** Set once the time is up: the item that plays next. */
+  winner: string | null;
+};
+
+export const VOTE_SECOND_OPTIONS = [0, 15, 30, 60, 90] as const;
+export const DEFAULT_VOTE_SECONDS = 30;
+/** How many songs a timed vote draws from the queue. */
+export const BALLOT_SIZE = 2;
+
+/** The item ahead in a ballot. A tie goes to a coin toss, so nobody can game it by voting last. */
+function ballotLeader(ballot: Ballot) {
+  const counts = ballot.ids.map((id) => Object.values(ballot.votes).filter((vote) => vote === id).length);
+  const best = Math.max(...counts);
+  const leaders = ballot.ids.filter((_, at) => counts[at] === best);
+  return leaders[Math.floor(Math.random() * leaders.length)] ?? null;
+}
+
+/** Whether vote mode is drawing two songs on a clock, rather than counting thumbs across the whole queue. */
+export function timedVote(state: RoomState) {
+  return state.queueOrder === "vote" && state.voteSeconds > 0;
+}
 
 export type Wheel = {
   on: boolean;
@@ -184,7 +222,18 @@ export const QUEUE_ORDERS = ["line", "random", "vote"] as const satisfies readon
 export type PartyGame = "off" | "bomb" | "blind";
 export const PARTY_GAMES = ["off", "bomb", "blind"] as const satisfies readonly PartyGame[];
 
-export const QUEUE_LIMITS = [0, 1, 2, 3, 5] as const;
+/** queueLimit: guests may not queue at all; only the host and co-hosts add songs. */
+export const QUEUE_CLOSED = -1;
+export const QUEUE_LIMITS = [0, 1, 2, 3, 5, QUEUE_CLOSED] as const;
+
+/**
+ * Whether this member may add to the queue right now. A closed queue still opens for whoever the mic bomb landed on,
+ * or the game could never be answered.
+ */
+export function mayQueue(state: RoomState, memberId: string | null | undefined) {
+  if (state.queueLimit !== QUEUE_CLOSED || isManager(state, memberId)) return true;
+  return Boolean(memberId) && state.spotlight?.memberId === memberId;
+}
 /** Long enough to find a song on a phone, short enough to stay a game. */
 export const BOMB_SECONDS = 60;
 export const BOMB_SECOND_OPTIONS = [30, 45, 60, 90, 120] as const;
@@ -330,6 +379,11 @@ export type RoomIntent =
   | { kind: "tournamentPick"; slot: number; name?: string }
   | { kind: "tournamentTheme"; theme: string }
   | { kind: "tournamentFlash" }
+  | { kind: "voteSeconds"; seconds: number }
+  | { kind: "gamesView"; enabled: boolean }
+  /** The host's clock: draw two songs for a timed vote, or call the one running. */
+  | { kind: "ballotOpen"; ids: string[]; seconds: number }
+  | { kind: "ballotClose" }
   /** Turn one wheel on or off, rename it, or give it new names. */
   | { kind: "wheel"; index: number; on?: boolean; title?: string; names?: string[]; seconds?: number }
   /** The host's reducer picks where it lands, so every screen shows the same name. */
@@ -344,7 +398,7 @@ export type RoomIntent =
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "playLock", "notesOn", "notesShared",
   "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "tournamentTheme", "vocalCut", "vocalAi", "eq", "voiceRoom", "kick", "unban",
-  "wheel", "wheelSpin", "timer",
+  "wheel", "wheelSpin", "timer", "voteSeconds", "gamesView",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -353,7 +407,7 @@ export type GuestIntent = Extract<
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat" | "playLock"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
     | "bomb" | "standingsReset" | "tournament" | "tournamentPick" | "tournamentTheme" | "vocalCut" | "vocalAi" | "eq"
-    | "voiceRoom" | "kick" | "unban" | "wheel" | "wheelSpin" | "timer" }
+    | "voiceRoom" | "kick" | "unban" | "wheel" | "wheelSpin" | "timer" | "voteSeconds" | "gamesView" }
 >;
 
 export type RoomEvent =
@@ -435,6 +489,7 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
     voiceRoom: "", cohosts: [], banned: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
     standings: [], tournament: null, hostOffset: 0, wheels: emptyWheels(), timer: null,
+    voteSeconds: DEFAULT_VOTE_SECONDS, ballot: null, gamesView: false,
   };
 }
 
@@ -496,19 +551,24 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       const [next, rest] = pickNext(state);
       if (!state.nowPlaying && !next) return state;
       // A new song starts in its original key, the same way Transpose starts new songs by default.
-      return { ...state, nowPlaying: next, queue: rest, isPlaying: next !== null, position: 0, key: 0, ...closeScores(state) };
+      return {
+        ...state, nowPlaying: next, queue: rest, isPlaying: next !== null, position: 0, key: 0, ballot: null, ...closeScores(state),
+      };
     }
     case "jump": {
       const item = state.queue.find((queued) => queued.id === intent.itemId);
       if (!item) return state;
       return {
         ...state, nowPlaying: item, queue: state.queue.filter((queued) => queued !== item),
-        isPlaying: true, position: 0, key: 0, ...closeScores(state),
+        isPlaying: true, position: 0, key: 0, ballot: null, ...closeScores(state),
       };
     }
     case "remove": {
       const queue = state.queue.filter((queued) => queued.id !== intent.itemId);
-      return queue.length === state.queue.length ? state : { ...state, queue };
+      if (queue.length === state.queue.length) return state;
+      // A song taken out of the queue cannot stay on the ballot; the host draws a fresh pair.
+      const ballot = state.ballot?.ids.includes(intent.itemId) ? null : state.ballot;
+      return { ...state, queue, ballot };
     }
     case "play":
     case "pause":
@@ -613,7 +673,23 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     }
     case "queueOrder": {
       const value = QUEUE_ORDERS.find((option) => option === intent.value) ?? "line";
-      return value === state.queueOrder ? state : { ...state, queueOrder: value };
+      return value === state.queueOrder ? state : { ...state, queueOrder: value, ballot: null };
+    }
+    case "gamesView":
+      return intent.enabled === state.gamesView ? state : { ...state, gamesView: intent.enabled };
+    case "voteSeconds": {
+      const seconds = VOTE_SECOND_OPTIONS.find((option) => option === intent.seconds) ?? DEFAULT_VOTE_SECONDS;
+      return seconds === state.voteSeconds ? state : { ...state, voteSeconds: seconds, ballot: null };
+    }
+    case "ballotOpen": {
+      if (!timedVote(state)) return state;
+      const ids = intent.ids.filter((id, at) => intent.ids.indexOf(id) === at && state.queue.some((item) => item.id === id));
+      if (ids.length < BALLOT_SIZE) return state;
+      return { ...state, ballot: { ids: ids.slice(0, BALLOT_SIZE), votes: {}, left: Math.max(1, Math.round(intent.seconds)), winner: null } };
+    }
+    case "ballotClose": {
+      if (!state.ballot || state.ballot.winner) return state;
+      return { ...state, ballot: { ...state.ballot, left: 0, winner: ballotLeader(state.ballot) } };
     }
     case "game": {
       if (!isKaraoke(state.mode)) return state;
@@ -632,6 +708,15 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
     }
     case "vote": {
       if (!intent.memberId) return state;
+      if (timedVote(state)) {
+        // One vote each, for one of the two songs, while the clock runs. Tapping your own pick again takes it back.
+        const ballot = state.ballot;
+        if (!ballot || ballot.winner || !ballot.ids.includes(intent.itemId)) return state;
+        const votes = { ...ballot.votes };
+        if (votes[intent.memberId] === intent.itemId) delete votes[intent.memberId];
+        else votes[intent.memberId] = intent.itemId;
+        return { ...state, ballot: { ...ballot, votes } };
+      }
       const queue = state.queue.map((item) => {
         if (item.id !== intent.itemId) return item;
         const votes = item.votes ?? [];
@@ -706,6 +791,12 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
 export function peekNext(state: RoomState): QueueItem | null {
   if (state.queue.length === 0 || state.queueOrder === "random") return null;
   if (state.queueOrder !== "vote") return state.queue[0];
+  if (state.voteSeconds > 0) {
+    // Until the vote is called nobody knows; a queue of one has nothing to vote on.
+    const winner = state.ballot?.winner;
+    if (winner) return state.queue.find((item) => item.id === winner) ?? null;
+    return state.queue.length === 1 ? state.queue[0] : null;
+  }
   return state.queue.reduce((top, item) => ((item.votes?.length ?? 0) > (top.votes?.length ?? 0) ? item : top), state.queue[0]);
 }
 
@@ -714,7 +805,12 @@ function pickNext(state: RoomState): [QueueItem | null, QueueItem[]] {
   if (state.queue.length === 0) return [null, []];
   let index = 0;
   if (state.queueOrder === "random") index = Math.floor(Math.random() * state.queue.length);
-  if (state.queueOrder === "vote") {
+  if (timedVote(state)) {
+    // The song ended before the vote did: whichever is ahead wins now.
+    const pick = state.ballot ? state.ballot.winner ?? ballotLeader(state.ballot) : null;
+    const at = state.queue.findIndex((item) => item.id === pick);
+    if (at >= 0) index = at;
+  } else if (state.queueOrder === "vote") {
     state.queue.forEach((item, at) => {
       if ((item.votes?.length ?? 0) > (state.queue[index].votes?.length ?? 0)) index = at;
     });
@@ -983,7 +1079,24 @@ export function sanitizeState(value: unknown): RoomState | null {
     hostOffset: clampOffset(value.hostOffset),
     wheels: sanitizeWheels(value.wheels),
     timer: sanitizeTimer(value.timer),
+    voteSeconds: VOTE_SECOND_OPTIONS.find((option) => option === value.voteSeconds) ?? DEFAULT_VOTE_SECONDS,
+    ballot: sanitizeBallot(value.ballot, queue),
+    gamesView: value.gamesView === true,
   };
+}
+
+function sanitizeBallot(value: unknown, queue: QueueItem[]): Ballot | null {
+  if (!isRecord(value) || !Array.isArray(value.ids)) return null;
+  const ids = memberIds(value.ids).filter((id) => queue.some((item) => item.id === id)).slice(0, BALLOT_SIZE);
+  if (ids.length < BALLOT_SIZE) return null;
+  const votes: Record<string, string> = {};
+  if (isRecord(value.votes)) {
+    for (const [memberId, itemId] of Object.entries(value.votes).slice(0, MAX_QUEUE)) {
+      if (memberId.length <= 64 && typeof itemId === "string" && ids.includes(itemId)) votes[memberId] = itemId;
+    }
+  }
+  const winner = typeof value.winner === "string" && ids.includes(value.winner) ? value.winner : null;
+  return { ids, votes, left: Math.min(VOTE_SECOND_OPTIONS[VOTE_SECOND_OPTIONS.length - 1], count(value.left)), winner };
 }
 
 function sanitizeWheels(value: unknown): Wheel[] {
@@ -1229,6 +1342,10 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
         seconds: typeof value.seconds === "number" ? value.seconds : undefined,
       };
     }
+    case "voteSeconds":
+      return typeof value.seconds === "number" ? { kind: "voteSeconds", seconds: value.seconds } : null;
+    case "gamesView":
+      return typeof value.enabled === "boolean" ? { kind: "gamesView", enabled: value.enabled } : null;
     case "timer": {
       // The seconds left come from the host's own clock, never from the sender.
       const action = TIMER_ACTIONS.find((option) => option === value.action);

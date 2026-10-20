@@ -1,12 +1,12 @@
 "use client";
 
-import { NotebookText, UserPlus } from "lucide-react";
+import { FerrisWheel, NotebookText, UserPlus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { HelperAi, HelperStatus } from "../../lib/karaoke-key";
 import { mayChangeKey, singerOf } from "../../lib/room-state";
 import { KeyHelperProbe, KeyHelperStatusLine } from "./key-helper";
 import { ChatBar, type ChatMessage } from "./chat";
-import { DraftPicker, PartyButton, ScorePad, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
+import { BallotCard, DraftPicker, PartyButton, ScorePad, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
 import { SyncOffsetControl } from "./sync-offset";
 import { EmojiPad } from "./reactions";
 import { AddVideoForm, PlaybackButtons, QueueList } from "./queue";
@@ -57,11 +57,13 @@ export function WatchRoom({
   // Each viewer can also fold the notes away for themselves; the video then takes the whole row.
   const [notesHidden, setNotesHidden] = useState(false);
   const notesAvailable = state.notesOn && !karaoke;
-  const showNotes = notesAvailable && !notesHidden;
+  // Mini games: the host folds the video and the notes away for the whole room; the video keeps loading underneath.
+  const games = state.mode === "watch" && state.gamesView;
+  const showNotes = notesAvailable && !notesHidden && !games;
   const canChangeKey = canManage || mayChangeKey(state, selfName);
 
   return (
-    <div className={`watch-grid${showNotes ? "" : " no-notes"}${karaoke ? " is-singalong" : ""}`}>
+    <div className={`watch-grid${showNotes ? "" : " no-notes"}${karaoke ? " is-singalong" : ""}${games ? " is-games" : ""}`}>
       <section className="card player-card" aria-label="วิดีโอ">
         <div className="player-slot">
           {state.nowPlaying ? player : (
@@ -78,7 +80,18 @@ export function WatchRoom({
             <strong>{state.nowPlaying?.title ?? "รอวิดีโอแรกของห้อง"}</strong>
             {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
           </div>
-          {notesAvailable && (
+          {state.mode === "watch" && canManage && (
+            <button
+              type="button"
+              className={`btn btn-secondary btn-sm notes-fold${games ? " is-on" : ""}`}
+              aria-pressed={games}
+              onClick={() => dispatch({ kind: "gamesView", enabled: !games })}
+              title="ซ่อนวิดีโอกับเนื้อเพลงให้ทั้งห้อง แล้วเล่นกงล้อกับจับเวลา"
+            >
+              <FerrisWheel size={16} aria-hidden="true" /> {games ? "กลับไปดูวิดีโอ" : "มินิเกม"}
+            </button>
+          )}
+          {notesAvailable && !games && (
             <button
               type="button"
               className={`btn btn-secondary btn-sm notes-fold${showNotes ? " is-on" : ""}`}
@@ -146,15 +159,18 @@ export function WatchRoom({
         {state.tournament && <TournamentPanel state={state} selfName={selfName} />}
         <DraftPicker state={state} selfName={selfName} dispatch={dispatch} />
         <ScorePad state={state} selfId={selfId} dispatch={dispatch} />
-        <AddVideoForm onAdd={model.addVideo} />
+        <BallotCard state={state} selfId={selfId} dispatch={dispatch} />
+        {model.canQueue
+          ? <AddVideoForm onAdd={model.addVideo} />
+          : <p className="empty-note">ตอนนี้หัวห้องปิดการเข้าคิวไว้ ให้หัวห้องเป็นคนเพิ่มวิดีโอ</p>}
         <QueueList
           items={state.queue}
           selfName={selfName}
           selfId={selfId}
           isHost={canManage}
-          voting={state.queueOrder === "vote"}
+          voting={state.queueOrder === "vote" && state.voteSeconds === 0}
           dispatch={dispatch}
-          emptyText="ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย"
+          emptyText={model.canQueue ? "ยังไม่มีคิว ทุกคนเพิ่มวิดีโอได้เลย" : "ยังไม่มีคิว"}
         />
       </section>
 

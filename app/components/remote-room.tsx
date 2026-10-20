@@ -4,7 +4,7 @@ import { Music2, PencilLine } from "lucide-react";
 import type { RealtimeStatus } from "../../lib/room-realtime";
 import { mayChangeKey, singerOf } from "../../lib/room-state";
 import { ChatBar, ChatLog, type ChatMessage } from "./chat";
-import { DraftPicker, PartyButton, ScorePad, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
+import { BallotCard, DraftPicker, PartyButton, ScorePad, SpotlightBanner, TournamentFlashCard, TournamentPanel } from "./party";
 import { AddVideoForm, PlaybackButtons, QueueList, YouTubeSearch } from "./queue";
 import { EmojiPad } from "./reactions";
 import { MODE_LABELS, type RoomModel } from "./room-model";
@@ -58,6 +58,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
         </section>
       )}
       <ScorePad state={state} selfId={selfId} dispatch={dispatch} />
+      <BallotCard state={state} selfId={selfId} dispatch={dispatch} />
 
       {karaoke && (
         <section className="card remote-key" aria-labelledby="remote-key-title">
@@ -103,9 +104,15 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
         {state.queueLimit > 0 && !canManage && (
           <p className="hint">ห้องนี้ให้คนละ {state.queueLimit} เพลงในคิว</p>
         )}
-        {state.game === "blind" && <p className="hint">เกมร้องเพลงมั่ว: เพลงที่คุณเพิ่มจะถูกสุ่มให้คนอื่นร้อง</p>}
-        <AddVideoForm onAdd={model.addVideo} submitLabel={karaoke ? "ขอเพลง" : "เข้าคิว"} />
-        <YouTubeSearch karaoke={karaoke} />
+        {model.canQueue ? (
+          <>
+            {state.game === "blind" && <p className="hint">เกมร้องเพลงมั่ว: เพลงที่คุณเพิ่มจะถูกสุ่มให้คนอื่นร้อง</p>}
+            <AddVideoForm onAdd={model.addVideo} submitLabel={karaoke ? "ขอเพลง" : "เข้าคิว"} />
+            <YouTubeSearch karaoke={karaoke} />
+          </>
+        ) : (
+          <p className="empty-note">ตอนนี้หัวห้องปิดการเข้าคิวไว้ ให้หัวห้องเป็นคนเพิ่มเพลง</p>
+        )}
       </section>
 
       {state.chat && (
@@ -126,7 +133,7 @@ export function RemoteRoom({ model, messages, onRename, onReact, onChat, onOpenP
           selfName={selfName}
           selfId={selfId}
           isHost={canManage}
-          voting={state.queueOrder === "vote"}
+          voting={state.queueOrder === "vote" && state.voteSeconds === 0}
           dispatch={dispatch}
           emptyText="ยังไม่มีคิว เพลงของคุณจะได้เล่นต่อทันที"
         />

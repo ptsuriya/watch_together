@@ -15,6 +15,8 @@ export type RoomModel = {
   canSkip: boolean;
   /** False while the host has locked play and pause and this viewer is not managing. */
   canPlay: boolean;
+  /** False while the host has closed the queue to guests and this viewer is one of them. */
+  canQueue: boolean;
   selfId: string | null;
   selfName: string;
   members: RoomMember[];
