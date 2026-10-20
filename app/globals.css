@@ -1235,6 +1235,54 @@ select.field { padding-right: 8px; }
 .wheel-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .wheel-editor { display: grid; gap: 6px; width: 100%; }
 
+/* The tools card's tabs, and the score board the host announces. */
+.tools-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px; border: 2px solid var(--bark); border-radius: 999px; background: var(--cream); align-self: flex-start; }
+.tools-tab {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px;
+  border: 0; border-radius: 999px; background: transparent; color: var(--clay); font-size: 14px; font-weight: 700;
+}
+.tools-tab:hover { color: var(--bark); }
+.tools-tab.is-on { background: var(--gold); color: var(--bark); box-shadow: inset 0 0 0 2px var(--bark); }
+.tools-panel { display: grid; gap: 14px; }
+.tools-panel[hidden] { display: none; }
+.tools-panel > .btn { justify-self: start; }
+
+.score-editor { display: grid; gap: 8px; }
+.score-rows { display: grid; gap: 8px; }
+.score-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; align-items: center; gap: 8px; }
+.score-row .field { min-height: 44px; }
+.score-editor .wheel-actions { justify-content: flex-start; }
+.score-board-view { display: grid; gap: 8px; }
+.score-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; counter-reset: none; }
+.score-list li {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  border: 2px solid var(--bark); border-radius: 16px; background: var(--cream); color: var(--bark);
+}
+.score-list li.is-place-1 { background: var(--gold); }
+.score-list li.is-place-2 { background: var(--honey); }
+.score-list li.is-place-3 { background: var(--sand); }
+.score-place { min-width: 32px; font-size: 20px; font-weight: 800; text-align: center; }
+.score-name { flex: 1; min-width: 0; overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.score-list b { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.score-announce {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; overflow-y: auto;
+  background: rgba(42, 16, 16, 0.86); backdrop-filter: blur(4px); animation: wheel-lift 0.25s ease-out;
+}
+.score-announce-card {
+  position: relative; display: grid; justify-items: center; gap: 14px; width: min(100%, 640px); padding: 32px 24px 24px;
+  border: 2px solid var(--bark); border-radius: var(--radius-card); background: var(--white); box-shadow: var(--shadow-lg);
+  color: var(--amber-deep); animation: wheel-pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.score-announce-card h2 { color: var(--bark); font-size: clamp(26px, 5vw, 40px); font-weight: 800; text-align: center; }
+.score-list-big { width: 100%; max-height: 60dvh; overflow-y: auto; }
+.score-list-big li { padding: 12px 18px; opacity: 0; animation: score-in 0.45s cubic-bezier(0.2, 1.3, 0.4, 1) forwards; }
+.score-list-big li.is-place-1 { padding-block: 18px; }
+.score-list-big li.is-place-1 .score-name, .score-list-big li.is-place-1 b { font-size: clamp(24px, 5vw, 34px); }
+.score-list-big .score-name { font-size: clamp(18px, 3.4vw, 24px); }
+.score-list-big b { font-size: clamp(22px, 4vw, 30px); }
+@keyframes score-in { from { opacity: 0; translate: 0 18px; scale: 0.92; } to { opacity: 1; translate: 0 0; scale: 1; } }
+
 /* Mini games: the video and the notes fold away for the room, and the wheels and the timer take the top. */
 .watch-grid.is-games .player-slot { display: none; }
 .watch-grid.is-games > .tools-card { order: -1; grid-column: 1 / -1; }

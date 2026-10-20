@@ -1,11 +1,13 @@
 "use client";
 
-import { AlarmClock, FerrisWheel, Pause, Pencil, Play, TimerReset, Trash2, UsersRound, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { AlarmClock, FerrisWheel, Megaphone, Pause, Pencil, Play, Plus, TimerReset, Trash2, Trophy, UsersRound, X } from "lucide-react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { RoomMember } from "../../lib/room-realtime";
 import {
-  MAX_TIMER_SECONDS, MAX_WHEEL_NAMES, TIMER_PRESETS, WHEEL_SPIN_SECONDS, wheelNames,
-  type RoomIntent, type RoomState, type RoomTimer, type Wheel,
+  MAX_SCORE_NAME, MAX_SCORE_ROWS, MAX_SCORE_TITLE, MAX_TIMER_SECONDS, MAX_WHEEL_NAMES, scoreRows, TIMER_PRESETS,
+  WHEEL_SPIN_SECONDS, wheelNames,
+  type RoomIntent, type RoomState, type RoomTimer, type Scoreboard, type ScoreRow, type Wheel,
 } from "../../lib/room-state";
 import { celebrate, originOf } from "./celebrate";
 import { playAlarm, playChime, playSpinTicks } from "./sound";
@@ -15,6 +17,8 @@ const TURNS_PER_SECOND = 1.5;
 const MIN_TURNS = 2;
 /** How long the "time's up" card stays over the video unless someone closes it. */
 const ALARM_SHOW_MS = 8000;
+/** How far apart the places arrive when the scores are announced. */
+const SCORE_STEP_MS = 450;
 const SLICE_COLORS = ["#EEC65D", "#FFF0CC", "#C86858", "#7AA36F", "#C07B2A", "#FAE4DC"];
 
 function clock(seconds: number) {
@@ -46,7 +50,13 @@ function spunTo(from: number, wheel: Wheel) {
   return from + turns * 360 + extra;
 }
 
-/** Watch together's extras: up to three name wheels the host turns on one at a time, and a countdown for the room. */
+type ToolTab = "wheels" | "timer" | "scores";
+
+/**
+ * Watch together's extras, in three tabs: up to three name wheels the host turns on one at a time, a countdown for the
+ * room, and a score board the host announces full screen. Every tab stays mounted, so a spin, the alarm or an
+ * announcement reaches people looking at another tab.
+ */
 export function RoomToolsCard({ state, canManage, members, dispatch }: {
   state: RoomState;
   canManage: boolean;
@@ -54,12 +64,26 @@ export function RoomToolsCard({ state, canManage, members, dispatch }: {
   dispatch: (intent: RoomIntent) => void;
 }) {
   const shown = state.wheels.flatMap((wheel, index) => (wheel.on ? [{ wheel, index }] : []));
-  if (!canManage && shown.length === 0 && !state.timer && !state.gamesView) return null;
+  const [tab, setTab] = useState<ToolTab>("wheels");
+  const tabsId = useId();
+  // A spin pulls everyone to the wheels, since that is where the room is looking.
+  const spins = state.wheels.map((wheel) => wheel.spin).join(",");
+  const [seenSpins, setSeenSpins] = useState(spins);
+  if (spins !== seenSpins) {
+    setSeenSpins(spins);
+    setTab("wheels");
+  }
+
+  const tabs: { id: ToolTab; label: string; icon: ReactNode; live: boolean }[] = [
+    { id: "wheels", label: "กงล้อ", icon: <FerrisWheel size={16} aria-hidden="true" />, live: shown.length > 0 },
+    { id: "timer", label: "จับเวลา", icon: <AlarmClock size={16} aria-hidden="true" />, live: state.timer?.running === true },
+    { id: "scores", label: "ประกาศคะแนน", icon: <Trophy size={16} aria-hidden="true" />, live: state.scoreboard.rows.length > 0 },
+  ];
 
   return (
     <section className="card tools-card" aria-labelledby="tools-title">
       <div className="card-head">
-        <h2 id="tools-title"><FerrisWheel size={22} aria-hidden="true" /> {state.gamesView ? "มินิเกม" : "กงล้อและจับเวลา"}</h2>
+        <h2 id="tools-title"><FerrisWheel size={22} aria-hidden="true" /> มินิเกม</h2>
         {canManage && (
           <button
             type="button"
@@ -67,45 +91,291 @@ export function RoomToolsCard({ state, canManage, members, dispatch }: {
             aria-pressed={state.gamesView}
             onClick={() => dispatch({ kind: "gamesView", enabled: !state.gamesView })}
           >
-            {state.gamesView ? "กลับไปดูวิดีโอ" : "เปิดโหมดมินิเกม"}
+            {state.gamesView ? "กลับไปดูวิดีโอ" : "ซ่อนวิดีโอ เล่นมินิเกม"}
           </button>
         )}
       </div>
-      {!canManage && state.gamesView && shown.length === 0 && !state.timer && (
-        <p className="empty-note">หัวห้องกำลังเตรียมมินิเกม รอสักครู่…</p>
-      )}
-      {canManage && (
-        <div className="party-chips" role="group" aria-label="เปิดหรือปิดกงล้อ">
-          {state.wheels.map((wheel, index) => (
-            <button
-              key={index}
-              type="button"
-              className={`chip-btn${wheel.on ? " is-on" : ""}`}
-              aria-pressed={wheel.on}
-              onClick={() => dispatch({ kind: "wheel", index, on: !wheel.on })}
-            >
-              <FerrisWheel size={16} aria-hidden="true" /> {wheel.title}
-            </button>
-          ))}
-          {!state.timer && (
-            <button type="button" className="chip-btn" onClick={() => dispatch({ kind: "timer", action: "set", seconds: TIMER_PRESETS[2] })}>
-              <AlarmClock size={16} aria-hidden="true" /> จับเวลา
-            </button>
-          )}
-        </div>
-      )}
-      {state.timer && <TimerPanel timer={state.timer} canManage={canManage} dispatch={dispatch} />}
-      {shown.length > 0 && (
-        <div className="wheel-grid">
-          {shown.map(({ wheel, index }) => (
-            <WheelPanel key={index} wheel={wheel} index={index} canManage={canManage} members={members} dispatch={dispatch} />
-          ))}
-        </div>
-      )}
-      {canManage && shown.length === 0 && (
-        <p className="empty-note">กดเปิดกงล้อด้านบนได้สูงสุด 3 อัน ใส่ชื่อแล้วหมุนให้ทั้งห้องลุ้นพร้อมกัน</p>
-      )}
+      <div className="tools-tabs" role="tablist" aria-label="มินิเกม">
+        {tabs.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            id={`${tabsId}-${item.id}`}
+            aria-selected={tab === item.id}
+            aria-controls={`${tabsId}-${item.id}-panel`}
+            className={`tools-tab${tab === item.id ? " is-on" : ""}`}
+            onClick={() => setTab(item.id)}
+          >
+            {item.icon} {item.label}
+            {item.live && <em className="chip-dot" aria-hidden="true" />}
+          </button>
+        ))}
+      </div>
+
+      <div role="tabpanel" id={`${tabsId}-wheels-panel`} aria-labelledby={`${tabsId}-wheels`} hidden={tab !== "wheels"} className="tools-panel">
+        {canManage && (
+          <div className="party-chips" role="group" aria-label="เปิดหรือปิดกงล้อ">
+            {state.wheels.map((wheel, index) => (
+              <button
+                key={index}
+                type="button"
+                className={`chip-btn${wheel.on ? " is-on" : ""}`}
+                aria-pressed={wheel.on}
+                onClick={() => dispatch({ kind: "wheel", index, on: !wheel.on })}
+              >
+                <FerrisWheel size={16} aria-hidden="true" /> {wheel.title}
+              </button>
+            ))}
+          </div>
+        )}
+        {shown.length > 0 ? (
+          <div className="wheel-grid">
+            {shown.map(({ wheel, index }) => (
+              <WheelPanel key={index} wheel={wheel} index={index} canManage={canManage} members={members} dispatch={dispatch} />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-note">
+            {canManage ? "กดเปิดกงล้อด้านบนได้สูงสุด 3 อัน ใส่ชื่อแล้วหมุนให้ทั้งห้องลุ้นพร้อมกัน" : "หัวห้องยังไม่ได้เปิดกงล้อ"}
+          </p>
+        )}
+      </div>
+
+      <div role="tabpanel" id={`${tabsId}-timer-panel`} aria-labelledby={`${tabsId}-timer`} hidden={tab !== "timer"} className="tools-panel">
+        {state.timer ? <TimerPanel timer={state.timer} canManage={canManage} dispatch={dispatch} /> : canManage ? (
+          <button type="button" className="btn btn-honey" onClick={() => dispatch({ kind: "timer", action: "set", seconds: TIMER_PRESETS[2] })}>
+            <AlarmClock size={18} aria-hidden="true" /> ตั้งจับเวลา
+          </button>
+        ) : (
+          <p className="empty-note">ยังไม่มีการจับเวลา</p>
+        )}
+      </div>
+
+      <div role="tabpanel" id={`${tabsId}-scores-panel`} aria-labelledby={`${tabsId}-scores`} hidden={tab !== "scores"} className="tools-panel">
+        <ScorePanel board={state.scoreboard} canManage={canManage} members={members} dispatch={dispatch} />
+      </div>
+
+      <ScoreAnnouncement board={state.scoreboard} />
     </section>
+  );
+}
+
+/** Highest first; equal scores share a place. */
+function ranked(rows: ScoreRow[]) {
+  const sorted = [...rows].sort((a, b) => b.score - a.score);
+  return sorted.map((row, at) => ({ ...row, place: sorted.findIndex((other) => other.score === row.score) + 1, at }));
+}
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+function placeMark(place: number) {
+  return MEDALS[place - 1] ?? String(place);
+}
+
+function formatScore(score: number) {
+  return score.toLocaleString("th-TH", { maximumFractionDigits: 1 });
+}
+
+/** The board as it stands, for everyone; the host and co-hosts also get the form to fill it and the button to announce it. */
+function ScorePanel({ board, canManage, members, dispatch }: {
+  board: Scoreboard;
+  canManage: boolean;
+  members: RoomMember[];
+  dispatch: (intent: RoomIntent) => void;
+}) {
+  if (!canManage) {
+    if (board.rows.length === 0) return <p className="empty-note">หัวห้องยังไม่ได้ประกาศคะแนน</p>;
+    return (
+      <div className="score-board-view">
+        {board.title && <strong className="wheel-title">{board.title}</strong>}
+        <ScoreList rows={board.rows} />
+      </div>
+    );
+  }
+  return <ScoreEditor board={board} members={members} dispatch={dispatch} />;
+}
+
+function ScoreList({ rows }: { rows: ScoreRow[] }) {
+  return (
+    <ol className="score-list">
+      {ranked(rows).map((row) => (
+        <li key={`${row.name}-${row.at}`} className={row.place <= 3 ? `is-top is-place-${row.place}` : undefined}>
+          <span className="score-place">{placeMark(row.place)}</span>
+          <span className="score-name">{row.name}</span>
+          <b>{formatScore(row.score)}</b>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+type DraftRow = { key: number; name: string; score: string };
+
+function ScoreEditor({ board, members, dispatch }: {
+  board: Scoreboard;
+  members: RoomMember[];
+  dispatch: (intent: RoomIntent) => void;
+}) {
+  const titleId = useId();
+  const keyRef = useRef(0);
+  const nextKey = () => (keyRef.current += 1);
+  const [title, setTitle] = useState(board.title);
+  const [rows, setRows] = useState<DraftRow[]>(() => (
+    board.rows.length > 0
+      ? board.rows.map((row, at) => ({ key: -1 - at, name: row.name, score: String(row.score) }))
+      : [{ key: -1, name: "", score: "" }, { key: -2, name: "", score: "" }]
+  ));
+
+  const clean = scoreRows(rows.map((row) => ({ name: row.name, score: Number(row.score) || 0 })));
+
+  function change(key: number, field: "name" | "score", value: string) {
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
+  }
+
+  function fillFromRoom() {
+    const seen = new Set<string>();
+    const names = members.map((member) => member.name).filter((name) => !seen.has(name) && (seen.add(name), true));
+    setRows(names.slice(0, MAX_SCORE_ROWS).map((name) => ({ key: nextKey(), name, score: "" })));
+  }
+
+  function save(announce: boolean) {
+    dispatch({ kind: "scoreboard", title, rows: clean, announce });
+  }
+
+  return (
+    <form
+      className="score-editor"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save(true);
+      }}
+    >
+      <label htmlFor={titleId} className="field-label">หัวข้อ</label>
+      <input
+        id={titleId}
+        className="field"
+        value={title}
+        maxLength={MAX_SCORE_TITLE}
+        placeholder="เช่น คะแนนรอบที่ 1"
+        onChange={(event) => setTitle(event.target.value)}
+      />
+      <div className="score-rows">
+        {rows.map((row, at) => (
+          <div key={row.key} className="score-row">
+            <input
+              className="field"
+              value={row.name}
+              maxLength={MAX_SCORE_NAME}
+              placeholder={`ชื่อ / ทีม ${at + 1}`}
+              aria-label={`ชื่อแถวที่ ${at + 1}`}
+              onChange={(event) => change(row.key, "name", event.target.value)}
+            />
+            <input
+              className="field score-input"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              value={row.score}
+              placeholder="0"
+              aria-label={`คะแนนแถวที่ ${at + 1}`}
+              onChange={(event) => change(row.key, "score", event.target.value)}
+            />
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={`ลบแถวที่ ${at + 1}`}
+              onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="wheel-actions">
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={rows.length >= MAX_SCORE_ROWS}
+          onClick={() => setRows((current) => [...current, { key: nextKey(), name: "", score: "" }])}
+        >
+          <Plus size={16} aria-hidden="true" /> เพิ่มแถว
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={fillFromRoom} disabled={members.length === 0}>
+          <UsersRound size={16} aria-hidden="true" /> ใช้ชื่อคนในห้อง
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => save(false)}>บันทึก</button>
+        <button type="submit" className="btn btn-honey btn-sm" disabled={clean.length === 0}>
+          <Megaphone size={16} aria-hidden="true" /> ประกาศคะแนน
+        </button>
+      </div>
+      <small className="ballot-hint">กด “ประกาศคะแนน” แล้วคะแนนจะขึ้นเต็มจอทุกเครื่องในห้อง</small>
+    </form>
+  );
+}
+
+/** Each announcement from the host, full screen on every device: the places come in from the bottom up. */
+function ScoreAnnouncement({ board }: { board: Scoreboard }) {
+  const [seen, setSeen] = useState(board.announce);
+  const [open, setOpen] = useState(false);
+  if (seen !== board.announce) {
+    setSeen(board.announce);
+    setOpen(board.rows.length > 0);
+  }
+  const rows = ranked(board.rows);
+  // The winner arrives last, a beat after the rest.
+  const revealMs = Math.min(rows.length, 8) * SCORE_STEP_MS + 400;
+
+  useEffect(() => {
+    if (!open) return;
+    const timeoutId = window.setTimeout(() => {
+      playChime();
+      celebrate("champion");
+    }, revealMs);
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [open, revealMs, seen]);
+
+  if (!open) return null;
+  return createPortal(
+    <div
+      className="score-announce"
+      role="dialog"
+      aria-modal="true"
+      aria-label={board.title || "ประกาศคะแนน"}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) setOpen(false);
+      }}
+    >
+      <div className="score-announce-card">
+        <button type="button" className="icon-btn wheel-close" onClick={() => setOpen(false)} aria-label="ปิด">
+          <X size={20} aria-hidden="true" />
+        </button>
+        <Trophy size={40} aria-hidden="true" />
+        <h2>{board.title || "ประกาศคะแนน"}</h2>
+        <ol className="score-list score-list-big">
+          {rows.map((row) => (
+            <li
+              key={`${row.name}-${row.at}`}
+              className={row.place <= 3 ? `is-top is-place-${row.place}` : undefined}
+              style={{ animationDelay: `${Math.max(0, Math.min(rows.length, 8) - 1 - Math.min(row.at, 7)) * SCORE_STEP_MS + (row.at === 0 ? 400 : 0)}ms` }}
+            >
+              <span className="score-place">{placeMark(row.place)}</span>
+              <span className="score-name">{row.name}</span>
+              <b>{formatScore(row.score)}</b>
+            </li>
+          ))}
+        </ol>
+        <button type="button" className="btn btn-honey" onClick={() => setOpen(false)}>ปิด</button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -369,15 +639,16 @@ function TimerPanel({ timer, canManage, dispatch }: {
 
   return (
     <>
-      {/* Outside the panel: its shake turns it, and a turned parent would pin this inside it instead of the screen. */}
-      {alarm && (
+      {/* On the page itself: the panel shakes and may sit in a hidden tab, and either would trap this inside it. */}
+      {alarm && createPortal(
         <div className="timer-alarm" role="alertdialog" aria-modal="true" aria-label="หมดเวลา" onClick={() => setAlarm(false)}>
           <div className="timer-alarm-card">
             <AlarmClock size={56} aria-hidden="true" />
             <strong>หมดเวลา!</strong>
             <button type="button" className="btn btn-honey" onClick={() => setAlarm(false)}>รับทราบ</button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
       <div className={`timer-panel${done ? " is-done" : ""}${timer.running ? " is-running" : ""}`}>
         <div className="timer-face" aria-live={done ? "assertive" : "off"}>

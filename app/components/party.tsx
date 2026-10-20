@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Bomb, Crown, Dices, ListOrdered, Medal, SlidersHorizontal, Star, Swords, Tag, ThumbsUp, Timer, Trash2, Trophy,
+  Bomb, Crown, FerrisWheel, Dices, ListOrdered, Medal, SlidersHorizontal, Star, Swords, Tag, ThumbsUp, Timer, Trash2, Trophy,
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
@@ -261,6 +261,17 @@ export function PartyDialog({ model, onClose }: { model: RoomModel; onClose: () 
             <PlayLockToggle enabled={state.playLock} dispatch={dispatch} />
             {/* Only the watch layout has a notes panel to hide. */}
             {state.mode === "watch" && <NotesToggle enabled={state.notesOn} dispatch={dispatch} />}
+            {state.mode === "watch" && (
+              <button
+                type="button"
+                className={`pill notes-toggle${state.toolsOn ? " is-on" : ""}`}
+                aria-pressed={state.toolsOn}
+                onClick={() => dispatch({ kind: "toolsOn", enabled: !state.toolsOn })}
+                title={state.toolsOn ? "ซ่อนกงล้อ จับเวลา และประกาศคะแนน" : "แสดงกงล้อ จับเวลา และประกาศคะแนน"}
+              >
+                <FerrisWheel size={16} aria-hidden="true" /> มินิเกม (กงล้อ · จับเวลา · คะแนน)
+              </button>
+            )}
           </div>
           {isKaraoke(state.mode) && <KeyControlSelect value={state.keyControl} dispatch={dispatch} />}
         </div>

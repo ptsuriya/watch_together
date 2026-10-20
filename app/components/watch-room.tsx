@@ -58,7 +58,7 @@ export function WatchRoom({
   const [notesHidden, setNotesHidden] = useState(false);
   const notesAvailable = state.notesOn && !karaoke;
   // Mini games: the host folds the video and the notes away for the whole room; the video keeps loading underneath.
-  const games = state.mode === "watch" && state.gamesView;
+  const games = state.mode === "watch" && state.toolsOn && state.gamesView;
   const showNotes = notesAvailable && !notesHidden && !games;
   const canChangeKey = canManage || mayChangeKey(state, selfName);
 
@@ -80,7 +80,7 @@ export function WatchRoom({
             <strong>{state.nowPlaying?.title ?? "รอวิดีโอแรกของห้อง"}</strong>
             {state.nowPlaying && <span>{karaoke ? "ร้องโดย" : "เพิ่มโดย"} {singerOf(state.nowPlaying)}</span>}
           </div>
-          {state.mode === "watch" && canManage && (
+          {state.mode === "watch" && state.toolsOn && canManage && (
             <button
               type="button"
               className={`btn btn-secondary btn-sm notes-fold${games ? " is-on" : ""}`}
@@ -174,7 +174,7 @@ export function WatchRoom({
         />
       </section>
 
-      {state.mode === "watch" && <RoomToolsCard state={state} canManage={canManage} members={members} dispatch={dispatch} />}
+      {state.mode === "watch" && state.toolsOn && <RoomToolsCard state={state} canManage={canManage} members={members} dispatch={dispatch} />}
     </div>
   );
 }

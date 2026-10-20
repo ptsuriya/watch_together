@@ -118,7 +118,37 @@ export type RoomState = {
   ballot: Ballot | null;
   /** Watch together: the host has folded the video and notes away so the room plays the wheels and the timer. */
   gamesView: boolean;
+  /** Watch together: the wheels, the timer and the score board are on the page at all. The host turns them on. */
+  toolsOn: boolean;
+  /** Scores the host types in. Each announcement puts them full screen on every device. */
+  scoreboard: Scoreboard;
 };
+
+export type ScoreRow = { name: string; score: number };
+
+export type Scoreboard = {
+  title: string;
+  rows: ScoreRow[];
+  /** Goes up by one each time the host announces, so every screen knows to show it once. */
+  announce: number;
+};
+
+export const MAX_SCORE_ROWS = 20;
+export const MAX_SCORE_NAME = 24;
+export const MAX_SCORE_TITLE = 40;
+const MAX_ANNOUNCED_SCORE = 999_999;
+
+export function scoreRows(value: unknown): ScoreRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, MAX_SCORE_ROWS).flatMap((row) => {
+    if (!isRecord(row)) return [];
+    const name = text(row.name, MAX_SCORE_NAME);
+    const score = typeof row.score === "number" && Number.isFinite(row.score)
+      ? Math.max(-MAX_ANNOUNCED_SCORE, Math.min(MAX_ANNOUNCED_SCORE, Math.round(row.score * 10) / 10))
+      : 0;
+    return name ? [{ name, score }] : [];
+  });
+}
 
 export type Ballot = {
   /** The queue item ids drawn for this vote. */
@@ -381,6 +411,9 @@ export type RoomIntent =
   | { kind: "tournamentFlash" }
   | { kind: "voteSeconds"; seconds: number }
   | { kind: "gamesView"; enabled: boolean }
+  | { kind: "toolsOn"; enabled: boolean }
+  /** Save the board; with announce, also put it full screen for everyone. */
+  | { kind: "scoreboard"; title?: string; rows?: ScoreRow[]; announce?: boolean }
   /** The host's clock: draw two songs for a timed vote, or call the one running. */
   | { kind: "ballotOpen"; ids: string[]; seconds: number }
   | { kind: "ballotClose" }
@@ -398,7 +431,7 @@ export type RoomIntent =
 export const MANAGER_INTENTS = [
   "remove", "jump", "mode", "crossfade", "chat", "playLock", "notesOn", "notesShared",
   "queueLimit", "queueOrder", "game", "bombSeconds", "scoring", "bomb", "standingsReset", "tournament", "tournamentTheme", "vocalCut", "vocalAi", "eq", "voiceRoom", "kick", "unban",
-  "wheel", "wheelSpin", "timer", "voteSeconds", "gamesView",
+  "wheel", "wheelSpin", "timer", "voteSeconds", "gamesView", "toolsOn", "scoreboard",
 ] as const;
 
 /** What anyone in the room may send. The host decides which ones to honour, by who asked. */
@@ -407,7 +440,7 @@ export type GuestIntent = Extract<
   { kind: "add" | "play" | "pause" | "next" | "key" | "notes" | "remove" | "jump" | "mode" | "crossfade" | "chat" | "playLock"
     | "notesOn" | "notesShared" | "queueLimit" | "queueOrder" | "game" | "bombSeconds" | "scoring" | "vote" | "score"
     | "bomb" | "standingsReset" | "tournament" | "tournamentPick" | "tournamentTheme" | "vocalCut" | "vocalAi" | "eq"
-    | "voiceRoom" | "kick" | "unban" | "wheel" | "wheelSpin" | "timer" | "voteSeconds" | "gamesView" }
+    | "voiceRoom" | "kick" | "unban" | "wheel" | "wheelSpin" | "timer" | "voteSeconds" | "gamesView" | "toolsOn" | "scoreboard" }
 >;
 
 export type RoomEvent =
@@ -490,6 +523,7 @@ export function createRoomState(mode: RoomMode, session = ""): RoomState {
     spotlight: null, scores: {}, lastScore: null,
     standings: [], tournament: null, hostOffset: 0, wheels: emptyWheels(), timer: null,
     voteSeconds: DEFAULT_VOTE_SECONDS, ballot: null, gamesView: false,
+    toolsOn: false, scoreboard: { title: "", rows: [], announce: 0 },
   };
 }
 
@@ -676,7 +710,23 @@ export function reduceRoom(state: RoomState, intent: RoomIntent): RoomState {
       return value === state.queueOrder ? state : { ...state, queueOrder: value, ballot: null };
     }
     case "gamesView":
+      if (!state.toolsOn && intent.enabled) return state;
       return intent.enabled === state.gamesView ? state : { ...state, gamesView: intent.enabled };
+    case "toolsOn":
+      if (intent.enabled === state.toolsOn) return state;
+      // Putting the games away also gives the room its video back.
+      return { ...state, toolsOn: intent.enabled, gamesView: intent.enabled && state.gamesView };
+    case "scoreboard": {
+      const board = state.scoreboard;
+      return {
+        ...state,
+        scoreboard: {
+          title: intent.title === undefined ? board.title : text(intent.title, MAX_SCORE_TITLE),
+          rows: intent.rows === undefined ? board.rows : scoreRows(intent.rows),
+          announce: intent.announce ? board.announce + 1 : board.announce,
+        },
+      };
+    }
     case "voteSeconds": {
       const seconds = VOTE_SECOND_OPTIONS.find((option) => option === intent.seconds) ?? DEFAULT_VOTE_SECONDS;
       return seconds === state.voteSeconds ? state : { ...state, voteSeconds: seconds, ballot: null };
@@ -1081,8 +1131,16 @@ export function sanitizeState(value: unknown): RoomState | null {
     timer: sanitizeTimer(value.timer),
     voteSeconds: VOTE_SECOND_OPTIONS.find((option) => option === value.voteSeconds) ?? DEFAULT_VOTE_SECONDS,
     ballot: sanitizeBallot(value.ballot, queue),
-    gamesView: value.gamesView === true,
+    gamesView: value.gamesView === true && value.toolsOn === true,
+    toolsOn: value.toolsOn === true,
+    scoreboard: sanitizeScoreboard(value.scoreboard),
   };
+}
+
+function sanitizeScoreboard(value: unknown): Scoreboard {
+  if (!isRecord(value)) return { title: "", rows: [], announce: 0 };
+  const announce = typeof value.announce === "number" && Number.isFinite(value.announce) ? Math.max(0, Math.round(value.announce)) : 0;
+  return { title: text(value.title, MAX_SCORE_TITLE), rows: scoreRows(value.rows), announce };
 }
 
 function sanitizeBallot(value: unknown, queue: QueueItem[]): Ballot | null {
@@ -1346,6 +1404,15 @@ export function sanitizeGuestIntent(value: unknown): GuestIntent | null {
       return typeof value.seconds === "number" ? { kind: "voteSeconds", seconds: value.seconds } : null;
     case "gamesView":
       return typeof value.enabled === "boolean" ? { kind: "gamesView", enabled: value.enabled } : null;
+    case "toolsOn":
+      return typeof value.enabled === "boolean" ? { kind: "toolsOn", enabled: value.enabled } : null;
+    case "scoreboard":
+      return {
+        kind: "scoreboard",
+        title: typeof value.title === "string" ? value.title.slice(0, MAX_SCORE_TITLE * 2) : undefined,
+        rows: value.rows === undefined ? undefined : scoreRows(value.rows),
+        announce: value.announce === true,
+      };
     case "timer": {
       // The seconds left come from the host's own clock, never from the sender.
       const action = TIMER_ACTIONS.find((option) => option === value.action);
