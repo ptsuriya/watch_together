@@ -47,6 +47,8 @@ export type RoomState = {
   isPlaying: boolean;
   /** Playback position in seconds at the moment the host sent this state. */
   position: number;
+  /** The host's clock (ms since epoch) when it sent this state; guests use it to measure how late the message ran. */
+  sentAt: number;
   /** Host notes, e.g. lyrics, shown to everyone in watch mode. */
   notes: string;
   /** Karaoke key offset in semitones. */
@@ -517,7 +519,7 @@ export function isVideoId(value: unknown): value is string {
 
 export function createRoomState(mode: RoomMode, session = ""): RoomState {
   return {
-    session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, notes: "", key: 0,
+    session, mode, nowPlaying: null, queue: [], isPlaying: false, position: 0, sentAt: 0, notes: "", key: 0,
     vocalCut: 0, vocalAi: true, eq: { ...FLAT_EQ }, notesOn: true, notesShared: false, crossfade: DEFAULT_CROSSFADE, keyHelper: false, chat: true, playLock: false, keyControl: "everyone",
     voiceRoom: "", cohosts: [], banned: [], queueLimit: 0, queueOrder: "line", game: "off", bombSeconds: BOMB_SECONDS, scoring: false,
     spotlight: null, scores: {}, lastScore: null,
@@ -1101,6 +1103,7 @@ export function sanitizeState(value: unknown): RoomState | null {
     queue,
     isPlaying: value.isPlaying === true && nowPlaying !== null,
     position,
+    sentAt: typeof value.sentAt === "number" && Number.isFinite(value.sentAt) ? Math.max(0, value.sentAt) : 0,
     notes: typeof value.notes === "string" ? value.notes.slice(0, MAX_NOTES) : "",
     key,
     vocalCut: VOCAL_CUT_OPTIONS.find((option) => option === value.vocalCut) ?? 0,
