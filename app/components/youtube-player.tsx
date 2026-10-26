@@ -12,6 +12,8 @@ export type PlaybackFollow = { position: number; at: number };
 export type PlaybackResume = PlaybackFollow & { itemId: string };
 
 const FOLLOW_TOLERANCE_S = 1.6;
+/** Past this far off, a guest seeks at once; between the two it must still be off at the next snapshot. */
+const FOLLOW_JUMP_S = 4;
 const AUTOPLAY_CHECK_MS = 2500;
 /** A skip in the middle of a song fades quickly; only a song reaching its end gets the full crossfade. */
 const SKIP_FADE_S = 1.5;
@@ -190,6 +192,9 @@ export function YouTubePlayer({
   const [twoDecks, setTwoDecks] = useState(false);
   /** The item in front has really played here, so a pause now came from outside the room, not from blocked autoplay. */
   const startedRef = useRef(false);
+  /** The snapshot last measured, and whether it already found the player off, so one late message cannot cause a seek. */
+  const checkedFollowRef = useRef<PlaybackFollow>(undefined);
+  const driftStrikesRef = useRef(0);
   const sendsKey = semitones !== undefined;
 
   useEffect(() => {
@@ -274,6 +279,7 @@ export function YouTubePlayer({
 
     endFade(fadeRef.current);
     startedRef.current = false;
+    driftStrikesRef.current = 0;
     if (!canFade || !other.player) {
       current.itemId = item.id;
       if (wantPlaying) outgoing.loadVideoById(video);
@@ -368,7 +374,15 @@ export function YouTubePlayer({
       }, OFFSET_SETTLE_MS);
       return () => window.clearTimeout(timeoutId);
     }
-    if (Math.abs(player.getCurrentTime() - target()) > FOLLOW_TOLERANCE_S) player.seekTo(target(), true);
+    const drift = Math.abs(player.getCurrentTime() - target());
+    if (checkedFollowRef.current !== follow) {
+      checkedFollowRef.current = follow;
+      driftStrikesRef.current = drift > FOLLOW_TOLERANCE_S ? driftStrikesRef.current + 1 : 0;
+      if (drift > FOLLOW_JUMP_S || driftStrikesRef.current >= 2) {
+        driftStrikesRef.current = 0;
+        player.seekTo(target(), true);
+      }
+    }
     // Every snapshot from the host is also a chance to catch a video that drifted out of play or pause.
     if (!controls) realign(player, playing, startedRef.current);
   }, [active, controls, follow, item.id, offset, playing, readyCount]);

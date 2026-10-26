@@ -42,7 +42,7 @@ npm run dev
 ## Realtime behavior
 
 - The host page is the room's source of truth. Guests send requests (add, play, pause, skip, key, notes) and render the state the host broadcasts after every change, plus a heartbeat (every 4 s while a watch room plays, otherwise every 15 s).
-- In watch mode a guest's player follows the host's position and corrects drift over 1.6 s. Browsers may block autoplay with sound until the person taps; the player then shows a "tap to play" button.
+- In watch mode a guest's player follows the host's position; each snapshot carries the host's send time so network lateness is subtracted, and a guest seeks only when it is more than 1.6 s off in two snapshots in a row (or more than 4 s off at once). Crossfade runs on the host's page only, so guests' phones decode one video, not two. Browsers may block autoplay with sound until the person taps; the player then shows a "tap to play" button.
 - Room state is live-only. If the host reloads, guests hand the queue back; a room with no host online does not play.
 - `GET /api/video?id=` looks titles up through YouTube oEmbed and rejects videos that cannot be embedded before they reach the queue.
 

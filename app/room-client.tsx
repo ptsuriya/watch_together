@@ -27,6 +27,15 @@ import { type PlaybackFollow, type PlaybackResume, YouTubePlayer } from "./compo
 
 const NAME_KEY = "sidewave-listener-name";
 const BROADCAST_DELAY_MS = 40;
+/** Replies to "send me the room" wait this long so a crowd arriving together shares one broadcast. */
+const REQUEST_REPLY_DELAY_MS = 300;
+const RESYNC_JITTER_MS = 800;
+/** Reactions: at most one leaves this device per interval, and a flood from others is thinned on arrival. */
+const REACT_SEND_INTERVAL_MS = 350;
+const REACT_SHOW_INTERVAL_MS = 90;
+/** Network delay samples kept to find the fastest a state message ever arrives. */
+const TRANSIT_SAMPLES = 12;
+const MAX_TRANSIT_DELAY_MS = 5000;
 // Typing in the notes sends at most a few updates per second.
 const NOTES_BROADCAST_DELAY_MS = 350;
 // Guests in watch mode correct their position from these snapshots; other screens only need an occasional refresh.
@@ -118,6 +127,28 @@ export default function RoomClient({
   const supabaseConfig = useMemo(() => ({ url: supabaseUrl, key: supabaseKey }), [supabaseKey, supabaseUrl]);
   const realtimeConfigured = isSupabaseConfigured(supabaseConfig);
 
+  const transitRef = useRef<{ session: string; samples: number[] }>({ session: "", samples: [] });
+  const reactSentAtRef = useRef(0);
+  const reactShownAtRef = useRef(0);
+
+  /**
+   * When a host snapshot was really taken, on this device's clock. The clocks of two devices disagree by an unknown
+   * amount, but the fastest recent message shows what that amount plus the base latency is; anything slower than that
+   * is queueing in the network, and is taken off so a late message does not make the player seek backwards.
+   */
+  const arrivalTime = useCallback((next: RoomState) => {
+    const now = Date.now();
+    if (!next.sentAt) return now;
+    const transit = transitRef.current;
+    if (transit.session !== next.session) {
+      transit.session = next.session;
+      transit.samples = [];
+    }
+    transit.samples = [...transit.samples.slice(-(TRANSIT_SAMPLES - 1)), now - next.sentAt];
+    const late = now - next.sentAt - Math.min(...transit.samples);
+    return now - Math.min(Math.max(0, late), MAX_TRANSIT_DELAY_MS);
+  }, []);
+
   const replaceState = useCallback((next: RoomState) => {
     stateRef.current = next;
     setState(next);
@@ -149,7 +180,7 @@ export default function RoomClient({
     broadcastRef.current({
       kind: "state",
       state: {
-        ...current, session: sessionRef.current, position, keyHelper: keyHelperRef.current, spotlight, timer, ballot,
+        ...current, session: sessionRef.current, position, sentAt: Date.now(), keyHelper: keyHelperRef.current, spotlight, timer, ballot,
         hostOffset: hostOffsetRef.current,
       },
     });
@@ -248,6 +279,10 @@ export default function RoomClient({
     if (!emoji) return;
     const from = selfNameRef.current;
     pushBurst(emoji, from);
+    // Your own screen shows every tap; the room hears at most a few a second.
+    const now = Date.now();
+    if (now - reactSentAtRef.current < REACT_SEND_INTERVAL_MS) return;
+    reactSentAtRef.current = now;
     if (realtimeConfigured) broadcastRef.current({ kind: "react", emoji, from });
   }, [pushBurst, realtimeConfigured]);
 
@@ -459,7 +494,11 @@ export default function RoomClient({
       }
       case "react": {
         const emoji = sanitizeReaction(event.emoji);
-        if (emoji) pushBurst(emoji, sanitizeChat(event.from).slice(0, 32) || "ใครบางคน");
+        const shownAt = Date.now();
+        if (emoji && shownAt - reactShownAtRef.current >= REACT_SHOW_INTERVAL_MS) {
+          reactShownAtRef.current = shownAt;
+          pushBurst(emoji, sanitizeChat(event.from).slice(0, 32) || "ใครบางคน");
+        }
         return;
       }
       case "notice": {
@@ -488,12 +527,13 @@ export default function RoomClient({
         }
         replaceState(next);
         setSynced(true);
-        setFollow({ position: next.position, at: Date.now() });
+        setFollow({ position: next.position, at: arrivalTime(next) });
         confirmPendingAdds(next);
         return;
       }
       case "state:request": {
-        if (isHostRef.current) broadcastStateNow();
+        // Many guests asking at once (a rejoin, a wake-up) get one answer, not one each.
+        if (isHostRef.current) scheduleBroadcast(REQUEST_REPLY_DELAY_MS);
         else if (event.fromHost && hasContent(stateRef.current)) {
           broadcastRef.current({ kind: "state:recover", state: stateRef.current });
         }
@@ -514,18 +554,19 @@ export default function RoomClient({
         return;
       }
     }
-  }, [broadcastStateNow, commit, confirmPendingAdds, dressItem, playerNames, pushBurst, pushMessage, pushToast, replaceState, runTimer, startBomb]);
+  }, [arrivalTime, broadcastStateNow, commit, confirmPendingAdds, dressItem, playerNames, pushBurst, pushMessage, pushToast, replaceState, runTimer, scheduleBroadcast, startBomb]);
 
   const handleResync = useCallback(({ isHost: selfIsHost }: RoomSelf) => {
-    if (!selfIsHost) broadcastRef.current({ kind: "state:request" });
+    // A wake-up or reconnect often hits every phone at once; spread the asks so the host is not answering them in a burst.
+    if (!selfIsHost) window.setTimeout(() => broadcastRef.current({ kind: "state:request" }), Math.random() * RESYNC_JITTER_MS);
     else if (!hasContent(stateRef.current)) broadcastRef.current({ kind: "state:request", fromHost: true });
     else broadcastStateNow();
   }, [broadcastStateNow]);
 
   const handleMemberJoin = useCallback((member: RoomMember, { isHost: selfIsHost }: RoomSelf) => {
-    if (selfIsHost && !member.isHost) broadcastStateNow();
+    if (selfIsHost && !member.isHost) scheduleBroadcast(REQUEST_REPLY_DELAY_MS);
     else if (!selfIsHost && member.isHost) broadcastRef.current({ kind: "state:request" });
-  }, [broadcastStateNow]);
+  }, [scheduleBroadcast]);
 
   const { status, members, isHost, selfId, broadcast } = useRoomRealtime({
     enabled: screen === "room",
@@ -825,7 +866,7 @@ export default function RoomClient({
       playing={state.isPlaying}
       controls={isHost}
       fullscreenButton={hasOwnScreens(state.mode)}
-      crossfade={state.crossfade}
+      crossfade={isHost ? state.crossfade : 0}
       hasNext={state.queue.length > 0}
       semitones={isKaraoke(state.mode) && (isHost || state.mode === "singalong") ? state.key : undefined}
       vocalCut={state.vocalCut}
